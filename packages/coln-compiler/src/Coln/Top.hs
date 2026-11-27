@@ -23,6 +23,7 @@ import Coln.Frontend.Parser (topFromText)
 import Coln.MIR.Top (coreToMIR, interpGlobals)
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Top (mirToSIR)
+import Coln.FLIR.Serialization ()
 
 import Prettyprinter.Render.Text (renderStrict)
 

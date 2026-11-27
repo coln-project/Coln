@@ -1,0 +1,204 @@
+-- elaborated
+global entry named Clauses
+in mode: Conjunctive
+type: (X : Set) -> Theory
+value: X => sig
+  clause : Set
+  appears-pos : clause -> X -> Prop
+  appears-neg : clause -> X -> Prop
+end
+
+global entry named Clauses/hom
+in mode: Conjunctive
+type: (X : Set) -> (C0 : Clauses X) -> (C1 : Clauses X) -> Theory
+value: X => C0 => C1 => sig
+  clause : C0.clause -> C1.clause
+  appears-pos : (c : C0.clause) -> (v : X) -> C0.appears-pos c v -> C1.appears-pos (clause c) v
+  appears-neg : (c : C0.clause) -> (v : X) -> C0.appears-neg c v -> C1.appears-neg (clause c) v
+end
+
+global entry named SATProblem
+in mode: Conjunctive
+type: Theory
+value: sig
+  var : Set
+  neq : var -> var -> Prop
+  c : Clauses var
+end
+
+global entry named ResolvedClause
+in mode: Conjunctive
+type: (X : Set) -> (neq : X -> X -> Prop) -> (D : Clauses X) -> (c0 : D.clause) -> (c1 : D.clause) -> (v : X) -> Theory
+value: X => neq => D => c0 => c1 => v => sig
+  c : D.clause
+  pos0 : (w : X) -> neq w v -> D.appears-pos c0 w -> D.appears-pos c w
+  pos1 : (w : X) -> D.appears-pos c1 w -> D.appears-pos c w
+  neg0 : (w : X) -> D.appears-neg c0 w -> D.appears-neg c w
+  neg1 : (w : X) -> neq w v -> D.appears-neg c1 w -> D.appears-neg c w
+end
+
+global entry named DerivedClause/motive
+in mode: Conjunctive
+type: (I : SATProblem) -> Theory
+value: I => sig
+  D : Clauses I.var
+  incl : Clauses/hom I.var I.c D
+  resolve : (c0 : D.clause) -> (c1 : D.clause) -> (v : I.var) -> D.appears-pos c0 v -> D.appears-neg c1 v -> ResolvedClause I.var I.neq D c0 c1 v
+end
+
+realm named SATRealm
+
+```flir
+('root.var (table (ground) ()))
+('root.neq (table (ground (primarykey 2)) ((%a 'root.var) (%b 'root.var))))
+('root.c.clause (table (ground) ()))
+('root.c.appears-pos
+ (table (ground (primarykey 2)) ((%a 'root.c.clause) (%b 'root.var))))
+('root.c.appears-neg
+ (table (ground (primarykey 2)) ((%a 'root.c.clause) (%b 'root.var))))
+('init.False (table view ()))
+('init.derived.D.appears-pos
+ (table view ((%a 'init.derived.D.clause) (%b 'root.var))))
+('init.derived.D.appears-neg
+ (table view ((%a 'init.derived.D.clause) (%b 'root.var))))
+('init.derived.incl.clause (table cons ((%a 'root.c.clause))))
+('init.derived.resolve.c
+ (table
+  cons
+  ((%c0 'init.derived.D.clause) (%c1 'init.derived.D.clause) (%v 'root.var))))
+('init.derived.D.clause
+ (table (union 'init.derived.incl.clause 'init.derived.resolve.c) ()))
+('init.derived.incl.clause.params
+ (rule
+  ((%a 'root.c.clause) (%b 'init.derived.D.clause))
+  (('init.derived.incl.clause (id %b) %a))
+  ('init.derived.D.clause (id %b))))
+('init.derived.incl.appears-pos
+ (rule
+  ((%c 'root.c.clause) (%v 'root.var) (%b 'init.derived.D.clause))
+  (('init.derived.incl.clause %c %b)
+   ('root.c.clause (id %c))
+   ('root.var (id %v))
+   ('root.c.appears-pos %c %v))
+  ('init.derived.D.appears-pos %b %v)))
+('init.derived.incl.appears-neg
+ (rule
+  ((%c 'root.c.clause) (%v 'root.var) (%b 'init.derived.D.clause))
+  (('init.derived.incl.clause %c %b)
+   ('root.c.clause (id %c))
+   ('root.var (id %v))
+   ('root.c.appears-neg %c %v))
+  ('init.derived.D.appears-neg %b %v)))
+('init.derived.resolve.c.params
+ (rule
+  ((%c0 'init.derived.D.clause)
+   (%c1 'init.derived.D.clause)
+   (%v 'root.var)
+   (%c 'init.derived.D.clause))
+  (('init.derived.resolve.c (id %c) %c0 %c1 %v))
+  ('init.derived.D.clause (id %c))))
+('init.derived.resolve.pos0
+ (rule
+  ((%c0 'init.derived.D.clause)
+   (%c1 'init.derived.D.clause)
+   (%v 'root.var)
+   (%w 'root.var)
+   (%e 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %e)
+   ('init.derived.D.clause (id %c0))
+   ('init.derived.D.clause (id %c1))
+   ('root.var (id %v))
+   ('init.derived.D.appears-pos %c0 %v)
+   ('init.derived.D.appears-neg %c1 %v)
+   ('root.var (id %w))
+   ('root.neq %w %v)
+   ('init.derived.D.appears-pos %c0 %w))
+  ('init.derived.D.appears-pos %e %w)))
+('init.derived.resolve.pos1
+ (rule
+  ((%c0 'init.derived.D.clause)
+   (%c1 'init.derived.D.clause)
+   (%v 'root.var)
+   (%w 'root.var)
+   (%d 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %d)
+   ('init.derived.D.clause (id %c0))
+   ('init.derived.D.clause (id %c1))
+   ('root.var (id %v))
+   ('init.derived.D.appears-pos %c0 %v)
+   ('init.derived.D.appears-neg %c1 %v)
+   ('root.var (id %w))
+   ('init.derived.D.appears-pos %c1 %w))
+  ('init.derived.D.appears-pos %d %w)))
+('init.derived.resolve.neg0
+ (rule
+  ((%c0 'init.derived.D.clause)
+   (%c1 'init.derived.D.clause)
+   (%v 'root.var)
+   (%w 'root.var)
+   (%d 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %d)
+   ('init.derived.D.clause (id %c0))
+   ('init.derived.D.clause (id %c1))
+   ('root.var (id %v))
+   ('init.derived.D.appears-pos %c0 %v)
+   ('init.derived.D.appears-neg %c1 %v)
+   ('root.var (id %w))
+   ('init.derived.D.appears-neg %c0 %w))
+  ('init.derived.D.appears-neg %d %w)))
+('init.derived.resolve.neg1
+ (rule
+  ((%c0 'init.derived.D.clause)
+   (%c1 'init.derived.D.clause)
+   (%v 'root.var)
+   (%w 'root.var)
+   (%e 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %e)
+   ('init.derived.D.clause (id %c0))
+   ('init.derived.D.clause (id %c1))
+   ('root.var (id %v))
+   ('init.derived.D.appears-pos %c0 %v)
+   ('init.derived.D.appears-neg %c1 %v)
+   ('root.var (id %w))
+   ('root.neq %w %v)
+   ('init.derived.D.appears-neg %c1 %w))
+  ('init.derived.D.appears-neg %e %w)))
+('root.var.foreignKey (law enforced () (('root.var)) ()))
+('root.neq.foreignKey
+ (law
+  enforced
+  ((%a 'root.var) (%b 'root.var))
+  (('root.neq %a %b))
+  (('root.var (id %a)) ('root.var (id %b)))))
+('root.c.clause.foreignKey (law enforced () (('root.c.clause)) ()))
+('root.c.appears-pos.foreignKey
+ (law
+  enforced
+  ((%a 'root.c.clause) (%b 'root.var))
+  (('root.c.appears-pos %a %b))
+  (('root.c.clause (id %a)) ('root.var (id %b)))))
+('root.c.appears-neg.foreignKey
+ (law
+  enforced
+  ((%a 'root.c.clause) (%b 'root.var))
+  (('root.c.appears-neg %a %b))
+  (('root.c.clause (id %a)) ('root.var (id %b)))))
+('init.derived.incl.clause.foreignKey
+ (law
+  enforced
+  ((%a 'root.c.clause))
+  (('init.derived.incl.clause %a))
+  (('root.c.clause (id %a)))))
+('init.derived.resolve.c.foreignKey
+ (law
+  enforced
+  ((%c0 'init.derived.D.clause) (%c1 'init.derived.D.clause) (%v 'root.var))
+  (('init.derived.resolve.c %c0 %c1 %v))
+  (('init.derived.D.clause (id %c0))
+   ('init.derived.D.clause (id %c1))
+   ('root.var (id %v))
+   ('init.derived.D.appears-pos %c0 %v)
+   ('init.derived.D.appears-neg %c1 %v))))
+```
+
+-- messages

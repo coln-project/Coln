@@ -8,23 +8,20 @@ value: sig
   C : (a : A) -> B a -> Prop
   f : (a : A) -> (b : B a) -> C a b
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := [a : root.A] primarykey [a]
-    table root.C := [a : root.A] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey a := root.B [a ↦ a] ⊢ a ∈ root.A []
-    enforced root.C.foreignKey a := root.C [a ↦ a] ⊢ a ∈ root.A [] ∧ root.B [
-      a ↦ a
-    ]
-    monitored root.f a := a ∈ root.A [] ∧ root.B [a ↦ a] ⊢ root.C [a ↦ a]
-  end
-end
+
+```flir
+('root.A (table (ground) ()))
+('root.B (table (ground (primarykey 1)) ((%a 'root.A))))
+('root.C (table (ground (primarykey 1)) ((%a 'root.A))))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey
+ (law enforced ((%a 'root.A)) (('root.B %a)) (('root.A (id %a)))))
+('root.C.foreignKey
+ (law enforced ((%a 'root.A)) (('root.C %a)) (('root.A (id %a)) ('root.B %a))))
+('root.f
+ (law monitored ((%a 'root.A)) (('root.A (id %a)) ('root.B %a)) (('root.C %a))))
+```
 
 -- messages

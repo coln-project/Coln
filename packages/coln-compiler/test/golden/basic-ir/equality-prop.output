@@ -8,18 +8,14 @@ value: sig
   y : P
   eq : x = y
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.P := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.P.foreignKey := root.P [] ⊢ ⊤
-    monitored root.x := ⊤ ⊢ root.P []
-    monitored root.y := ⊤ ⊢ root.P []
-  end
-end
+
+```flir
+('root.P (table (ground (primarykey 0)) ()))
+('root.P.foreignKey (law enforced () (('root.P)) ()))
+('root.x (law monitored () () (('root.P))))
+('root.y (law monitored () () (('root.P))))
+```
 
 -- messages

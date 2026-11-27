@@ -9,9 +9,10 @@ import Coln.FLIR.Value qualified as FLIR
 import Coln.SIR.Realm qualified as SIR
 
 sirToFLIR :: SIR.Realm -> FLIR.Realm
-sirToFLIR r =
+sirToFLIR r = do
+  let g = r.generators
   FLIR.Realm
-    { entities = fmap flattenEntity r.entities
-    , definitions = fmap flattenDefinition r.definitions
-    , rules = fmap flattenRule r.rules
+    { tables = fmap flattenTable g.tables
+    , rules = fmap flattenRule g.rules
+    , laws = fmap flattenLaw g.laws
     }

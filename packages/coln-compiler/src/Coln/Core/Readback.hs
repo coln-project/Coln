@@ -58,7 +58,7 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
     V.Lam fv dom body -> S.Lam fv (readb n dom) $ case V.scase @c of
       SNominative -> readbClo n dom body
       SDescriptive -> readbClo n dom body
-    V.Cons l d -> S.Cons l $ case V.scase @c of
+    V.Bundle l d -> S.Bundle l $ case V.scase @c of
       SNominative -> readb n <$> d
       SDescriptive -> readb n <$> d
     V.Lit l -> S.Lit l

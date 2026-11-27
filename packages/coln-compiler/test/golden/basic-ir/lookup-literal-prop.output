@@ -8,20 +8,17 @@ value: sig
   intFact : IntFact 19
   stringFact : StringFact "zombocom"
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.IntFact := [a : Int] primarykey [a]
-    table root.StringFact := [a : String] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.IntFact.foreignKey a := root.IntFact [a ↦ a] ⊢ ⊤
-    enforced root.StringFact.foreignKey a := root.StringFact [a ↦ a] ⊢ ⊤
-    monitored root.intFact := ⊤ ⊢ root.IntFact [a ↦ 19]
-    monitored root.stringFact := ⊤ ⊢ root.StringFact [a ↦ "zombocom"]
-  end
-end
+
+```flir
+('root.IntFact (table (ground (primarykey 1)) ((%a int))))
+('root.StringFact (table (ground (primarykey 1)) ((%a string))))
+('root.IntFact.foreignKey (law enforced ((%a int)) (('root.IntFact %a)) ()))
+('root.StringFact.foreignKey
+ (law enforced ((%a string)) (('root.StringFact %a)) ()))
+('root.intFact (law monitored () () (('root.IntFact 19))))
+('root.stringFact (law monitored () () (('root.StringFact "zombocom"))))
+```
 
 -- messages

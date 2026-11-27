@@ -8,33 +8,36 @@ value: sig
   C : (a : A) -> B a -> Set
   f : (a : A) -> (b : B a) -> C a b
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := [a : root.A]
-    table root.C := [a : root.A, b : root.B]
-    table root.f := [a : root.A, b : root.B, c : root.C] primarykey [a, b]
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey a := root.B [a ↦ a] ⊢ a ∈ root.A []
-    enforced root.C.foreignKey a b := root.C [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B [a ↦ a]
-    enforced root.f.foreignKey a b c := root.f [
-      a ↦ a,
-      b ↦ b,
-      c ↦ c
-    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B [a ↦ a] ∧ c ∈ root.C [a ↦ a, b ↦ b]
-    monitored root.f.total a b := a ∈ root.A [] ∧ b ∈ root.B [a ↦ a] ⊢ root.f [
-      a ↦ a,
-      b ↦ b
-    ]
-  end
-end
+
+```flir
+('root.A (table (ground) ()))
+('root.B (table (ground) ((%a 'root.A))))
+('root.C (table (ground) ((%a 'root.A) (%b 'root.B))))
+('root.f
+ (table (ground (primarykey 2)) ((%a 'root.A) (%b 'root.B) (%c 'root.C))))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey
+ (law enforced ((%a 'root.A)) (('root.B %a)) (('root.A (id %a)))))
+('root.C.foreignKey
+ (law
+  enforced
+  ((%a 'root.A) (%b 'root.B))
+  (('root.C %a %b))
+  (('root.A (id %a)) ('root.B (id %b) %a))))
+('root.f.foreignKey
+ (law
+  enforced
+  ((%a 'root.A) (%b 'root.B) (%c 'root.C))
+  (('root.f %a %b %c))
+  (('root.A (id %a)) ('root.B (id %b) %a) ('root.C (id %c) %a %b))))
+('root.f.total
+ (law
+  monitored
+  ((%a 'root.A) (%b 'root.B))
+  (('root.A (id %a)) ('root.B (id %b) %a))
+  (('root.f %a %b))))
+```
 
 -- messages

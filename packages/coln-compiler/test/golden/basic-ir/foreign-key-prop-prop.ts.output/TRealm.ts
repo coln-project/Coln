@@ -6,9 +6,9 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        V: (new runtime.BaseProp(mstore, "root.V", [])),
+        V: (new runtime.ViewProp(mstore, "root.V", [])),
         E: (a: null) => {
-          return (new runtime.BaseProp(mstore, "root.E", []));
+          return (new runtime.ViewProp(mstore, "root.E", []));
         }
       };
     }

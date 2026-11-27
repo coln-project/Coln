@@ -3,7 +3,7 @@ import type * as Runtime from "@coln-project/interface";
 export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
-      pointed: Runtime.MutableRef<{ point: { rank: number } }>,
+      pointed: Runtime.Ref<{ point: { rank: number } }>,
       boxed: (a: {
         key: { rank: number },
         value: string
@@ -27,7 +27,7 @@ export function createRealm(runtime: typeof Runtime) {
           }
         )),
         boxed: (a: { key: { rank: number }, value: string }) => {
-          return (new runtime.BaseSet(
+          return (new runtime.InductiveViewSet(
             mstore,
             "root.boxed",
             [a.key.rank, a.value]

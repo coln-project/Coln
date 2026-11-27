@@ -13,13 +13,15 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        model: { X: (new runtime.BaseSet(mstore, "root.model.X", [])) },
+        model: {
+          X: (new runtime.InductiveViewSet(mstore, "root.model.X", []))
+        },
         boxed: (a: {
           key: number,
           modelValue: Runtime.RowId<"root.model.X">,
           value: string
         }) => {
-          return (new runtime.BaseSet(
+          return (new runtime.InductiveViewSet(
             mstore,
             "root.boxed",
             [a.key, a.modelValue, a.value]

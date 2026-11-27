@@ -6,10 +6,12 @@ value: sig
   name : String
   rank : Int
 end
+
 global entry named fixed
 in mode: Conjunctive
 type: Payload
 value: [name := "fixed", rank := 1]
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -17,25 +19,21 @@ value: sig
   E : Payload -> Set
   selected : E fixed
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.E := [a.name : String, a.rank : Int]
-    table root.selected := [a : root.E] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.E.foreignKey a.name a.rank := root.E [
-      a.name ↦ a.name,
-      a.rank ↦ a.rank
-    ] ⊢ ⊤
-    enforced root.selected.foreignKey a := root.selected [a ↦ a] ⊢ a ∈ root.E [
-      a.name ↦ "fixed",
-      a.rank ↦ 1
-    ]
-    monitored root.selected.total := ⊤ ⊢ root.selected []
-  end
-end
+
+```flir
+('root.E (table (ground) ((%a.name string) (%a.rank int))))
+('root.selected (table (ground (primarykey 0)) ((%a 'root.E))))
+('root.E.foreignKey
+ (law enforced ((%a.name string) (%a.rank int)) (('root.E %a.name %a.rank)) ()))
+('root.selected.foreignKey
+ (law
+  enforced
+  ((%a 'root.E))
+  (('root.selected %a))
+  (('root.E (id %a) "fixed" 1))))
+('root.selected.total (law monitored () () (('root.selected))))
+```
 
 -- messages

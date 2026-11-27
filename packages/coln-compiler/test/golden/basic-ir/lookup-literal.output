@@ -8,28 +8,31 @@ value: sig
   intEdge : IntEdge 19
   stringEdge : StringEdge "zombocom"
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.IntEdge := [a : Int]
-    table root.StringEdge := [a : String]
-    table root.intEdge := [a : root.IntEdge] primarykey []
-    table root.stringEdge := [a : root.StringEdge] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.IntEdge.foreignKey a := root.IntEdge [a ↦ a] ⊢ ⊤
-    enforced root.StringEdge.foreignKey a := root.StringEdge [a ↦ a] ⊢ ⊤
-    enforced root.intEdge.foreignKey a := root.intEdge [
-      a ↦ a
-    ] ⊢ a ∈ root.IntEdge [a ↦ 19]
-    monitored root.intEdge.total := ⊤ ⊢ root.intEdge []
-    enforced root.stringEdge.foreignKey a := root.stringEdge [
-      a ↦ a
-    ] ⊢ a ∈ root.StringEdge [a ↦ "zombocom"]
-    monitored root.stringEdge.total := ⊤ ⊢ root.stringEdge []
-  end
-end
+
+```flir
+('root.IntEdge (table (ground) ((%a int))))
+('root.StringEdge (table (ground) ((%a string))))
+('root.intEdge (table (ground (primarykey 0)) ((%a 'root.IntEdge))))
+('root.stringEdge (table (ground (primarykey 0)) ((%a 'root.StringEdge))))
+('root.IntEdge.foreignKey (law enforced ((%a int)) (('root.IntEdge %a)) ()))
+('root.StringEdge.foreignKey
+ (law enforced ((%a string)) (('root.StringEdge %a)) ()))
+('root.intEdge.foreignKey
+ (law
+  enforced
+  ((%a 'root.IntEdge))
+  (('root.intEdge %a))
+  (('root.IntEdge (id %a) 19))))
+('root.intEdge.total (law monitored () () (('root.intEdge))))
+('root.stringEdge.foreignKey
+ (law
+  enforced
+  ((%a 'root.StringEdge))
+  (('root.stringEdge %a))
+  (('root.StringEdge (id %a) "zombocom"))))
+('root.stringEdge.total (law monitored () () (('root.stringEdge))))
+```
 
 -- messages

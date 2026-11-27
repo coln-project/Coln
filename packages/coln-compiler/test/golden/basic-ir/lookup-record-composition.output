@@ -5,12 +5,14 @@ type: Set
 value: sig
   rank : Int
 end
+
 global entry named Payload
 in mode: Conjunctive
 type: Set
 value: sig
   name : String
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -23,58 +25,66 @@ value: sig
   E : String -> Set
   edge : (x : X) -> E (payload (key x .rank) (slot x) .name)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.key := [a : root.X, b.rank : Int] primarykey [a]
-    table root.PayloadAt := [a : Int]
-    table root.slot := [x : root.X, a : root.PayloadAt] primarykey [x]
-    table root.payload := [
-      rank : Int,
-      a : root.PayloadAt,
-      b.name : String
-    ] primarykey [rank, a]
-    table root.E := [a : String]
-    table root.edge := [x : root.X, a : root.E] primarykey [x]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.key.foreignKey a b.rank := root.key [
-      a ↦ a,
-      b.rank ↦ b.rank
-    ] ⊢ a ∈ root.X []
-    monitored root.key.total a := a ∈ root.X [] ⊢ root.key [a ↦ a]
-    enforced root.PayloadAt.foreignKey a := root.PayloadAt [a ↦ a] ⊢ ⊤
-    enforced root.slot.foreignKey x a b.rank := root.slot [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.X [] ∧ root.key [a ↦ x, b.rank ↦ b.rank] ∧ a ∈ root.PayloadAt [
-      a ↦ b.rank
-    ]
-    monitored root.slot.total x := x ∈ root.X [] ⊢ root.slot [x ↦ x]
-    enforced root.payload.foreignKey rank a b.name := root.payload [
-      rank ↦ rank,
-      a ↦ a,
-      b.name ↦ b.name
-    ] ⊢ a ∈ root.PayloadAt [a ↦ rank]
-    monitored root.payload.total rank a := a ∈ root.PayloadAt [
-      a ↦ rank
-    ] ⊢ root.payload [rank ↦ rank, a ↦ a]
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ ⊤
-    enforced root.edge.foreignKey x a b.name c.rank d := root.edge [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.X [] ∧ root.key [a ↦ x, b.rank ↦ c.rank] ∧ root.slot [
-      x ↦ x,
-      a ↦ d
-    ] ∧ root.payload [rank ↦ c.rank, a ↦ d, b.name ↦ b.name] ∧ a ∈ root.E [
-      a ↦ b.name
-    ]
-    monitored root.edge.total x := x ∈ root.X [] ⊢ root.edge [x ↦ x]
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.key (table (ground (primarykey 1)) ((%a 'root.X) (%b.rank int))))
+('root.PayloadAt (table (ground) ((%a int))))
+('root.slot (table (ground (primarykey 1)) ((%x 'root.X) (%a 'root.PayloadAt))))
+('root.payload
+ (table
+  (ground (primarykey 2))
+  ((%rank int) (%a 'root.PayloadAt) (%b.name string))))
+('root.E (table (ground) ((%a string))))
+('root.edge (table (ground (primarykey 1)) ((%x 'root.X) (%a 'root.E))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.key.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b.rank int))
+  (('root.key %a %b.rank))
+  (('root.X (id %a)))))
+('root.key.total
+ (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.key %a))))
+('root.PayloadAt.foreignKey (law enforced ((%a int)) (('root.PayloadAt %a)) ()))
+('root.slot.foreignKey
+ (law
+  enforced
+  ((%x 'root.X) (%a 'root.PayloadAt) (%b.rank int))
+  (('root.key %x %b.rank) ('root.slot %x %a))
+  (('root.X (id %x)) ('root.PayloadAt (id %a) %b.rank))))
+('root.slot.total
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) (('root.slot %x))))
+('root.payload.foreignKey
+ (law
+  enforced
+  ((%rank int) (%a 'root.PayloadAt) (%b.name string))
+  (('root.payload %rank %a %b.name))
+  (('root.PayloadAt (id %a) %rank))))
+('root.payload.total
+ (law
+  monitored
+  ((%rank int) (%a 'root.PayloadAt))
+  (('root.PayloadAt (id %a) %rank))
+  (('root.payload %rank %a))))
+('root.E.foreignKey (law enforced ((%a string)) (('root.E %a)) ()))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%x 'root.X)
+   (%a 'root.E)
+   (%b.name string)
+   (%c.rank int)
+   (%d 'root.PayloadAt))
+  (('root.key %x %c.rank)
+   ('root.slot %x %d)
+   ('root.payload %c.rank %d %b.name)
+   ('root.edge %x %a))
+  (('root.X (id %x)) ('root.E (id %a) %b.name))))
+('root.edge.total
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) (('root.edge %x))))
+```
 
 -- messages

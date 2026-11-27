@@ -5,6 +5,7 @@ type: (X : Set) -> (X : Set) -> Set
 value: X => X => sig
   value : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -13,22 +14,21 @@ value: sig
   B : Set
   shadowed : Shadowed A B -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := []
-    table root.shadowed := [a.value : root.B]
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ ⊤
-    enforced root.shadowed.foreignKey a.value := root.shadowed [
-      a.value ↦ a.value
-    ] ⊢ a.value ∈ root.B []
-  end
-end
+
+```flir
+('root.A (table (ground) ()))
+('root.B (table (ground) ()))
+('root.shadowed (table (ground) ((%a.value 'root.B))))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) ()))
+('root.shadowed.foreignKey
+ (law
+  enforced
+  ((%a.value 'root.B))
+  (('root.shadowed %a.value))
+  (('root.B (id %a.value)))))
+```
 
 -- messages

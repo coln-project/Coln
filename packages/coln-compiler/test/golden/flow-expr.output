@@ -6,6 +6,7 @@ value: sig
   vertex : Set
   edge : vertex -> vertex -> Set
 end
+
 global entry named FlowExpr/motive
 in mode: Conjunctive
 type: (G : Graph) -> Theory
@@ -15,57 +16,71 @@ value: G => sig
   plus : (v : G.vertex) -> t v -> t v -> t v
   flow : (from : G.vertex) -> (into : G.vertex) -> G.edge from into -> t into
 end
+
 realm named GraphRealm
-lowered: flatrealm
-  entities
-    table root.vertex := []
-    table root.edge := [a : root.vertex, b : root.vertex]
-    view init.FlowExpr.t := [a : root.vertex]
-    view init.FlowExpr.const := [v : root.vertex, a : Int] primarykey [v, a]
-    view init.FlowExpr.plus := [
-      v : root.vertex,
-      a : init.FlowExpr.t,
-      b : init.FlowExpr.t
-    ] primarykey [v, a, b]
-    view init.FlowExpr.flow := [
-      from : root.vertex,
-      into : root.vertex,
-      a : root.edge
-    ] primarykey [from, into, a]
-  end
-  definitions
-    chased init.FlowExpr.const.collect v a := v ∈ root.vertex [] ⊢ init.FlowExpr.const [
-      v ↦ v,
-      a ↦ a
-    ]
-    chased init.FlowExpr.const.construct v a := v ∈ root.vertex [] ∧ init.FlowExpr.const [
-      v ↦ a
-    ] ⊢ init.FlowExpr.t [a ↦ v]
-    chased init.FlowExpr.plus.collect v a b := v ∈ root.vertex [] ∧ a ∈ init.FlowExpr.t [
-      a ↦ v
-    ] ∧ b ∈ init.FlowExpr.t [a ↦ v] ⊢ init.FlowExpr.plus [v ↦ v, a ↦ a, b ↦ b]
-    chased init.FlowExpr.plus.construct v a b := v ∈ root.vertex [] ∧ a ∈ init.FlowExpr.t [
-      a ↦ v
-    ] ∧ b ∈ init.FlowExpr.t [a ↦ v] ∧ init.FlowExpr.plus [
-      v ↦ a,
-      a ↦ b
-    ] ⊢ init.FlowExpr.t [a ↦ v]
-    chased init.FlowExpr.flow.collect from into a := from ∈ root.vertex [] ∧ into ∈ root.vertex [] ∧ a ∈ root.edge [
-      a ↦ from,
-      b ↦ into
-    ] ⊢ init.FlowExpr.flow [from ↦ from, into ↦ into, a ↦ a]
-    chased init.FlowExpr.flow.construct from into a := from ∈ root.vertex [] ∧ into ∈ root.vertex [] ∧ a ∈ root.edge [
-      a ↦ from,
-      b ↦ into
-    ] ∧ init.FlowExpr.flow [from ↦ into, into ↦ a] ⊢ init.FlowExpr.t [a ↦ into]
-  end
-  rules
-    enforced root.vertex.foreignKey := root.vertex [] ⊢ ⊤
-    enforced root.edge.foreignKey a b := root.edge [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.vertex [] ∧ b ∈ root.vertex []
-  end
-end
+
+```flir
+('root.vertex (table (ground) ()))
+('root.edge (table (ground) ((%a 'root.vertex) (%b 'root.vertex))))
+('init.FlowExpr.const (table cons ((%v 'root.vertex) (%a int))))
+('init.FlowExpr.plus
+ (table cons ((%v 'root.vertex) (%a 'init.FlowExpr.t) (%b 'init.FlowExpr.t))))
+('init.FlowExpr.flow
+ (table cons ((%from 'root.vertex) (%into 'root.vertex) (%a 'root.edge))))
+('init.FlowExpr.t
+ (table
+  (union 'init.FlowExpr.const 'init.FlowExpr.plus 'init.FlowExpr.flow)
+  ((%a 'root.vertex))))
+('init.FlowExpr.const.params
+ (rule
+  ((%v 'root.vertex) (%a int) (%b 'init.FlowExpr.t))
+  (('init.FlowExpr.const (id %b) %v %a))
+  ('init.FlowExpr.t (id %b) %v)))
+('init.FlowExpr.plus.params
+ (rule
+  ((%v 'root.vertex)
+   (%a 'init.FlowExpr.t)
+   (%b 'init.FlowExpr.t)
+   (%c 'init.FlowExpr.t))
+  (('init.FlowExpr.plus (id %c) %v %a %b))
+  ('init.FlowExpr.t (id %c) %v)))
+('init.FlowExpr.flow.params
+ (rule
+  ((%from 'root.vertex)
+   (%into 'root.vertex)
+   (%a 'root.edge)
+   (%b 'init.FlowExpr.t))
+  (('init.FlowExpr.flow (id %b) %from %into %a))
+  ('init.FlowExpr.t (id %b) %into)))
+('root.vertex.foreignKey (law enforced () (('root.vertex)) ()))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%a 'root.vertex) (%b 'root.vertex))
+  (('root.edge %a %b))
+  (('root.vertex (id %a)) ('root.vertex (id %b)))))
+('init.FlowExpr.const.foreignKey
+ (law
+  enforced
+  ((%v 'root.vertex) (%a int))
+  (('init.FlowExpr.const %v %a))
+  (('root.vertex (id %v)))))
+('init.FlowExpr.plus.foreignKey
+ (law
+  enforced
+  ((%v 'root.vertex) (%a 'init.FlowExpr.t) (%b 'init.FlowExpr.t))
+  (('init.FlowExpr.plus %v %a %b))
+  (('root.vertex (id %v))
+   ('init.FlowExpr.t (id %a) %v)
+   ('init.FlowExpr.t (id %b) %v))))
+('init.FlowExpr.flow.foreignKey
+ (law
+  enforced
+  ((%from 'root.vertex) (%into 'root.vertex) (%a 'root.edge))
+  (('init.FlowExpr.flow %from %into %a))
+  (('root.vertex (id %from))
+   ('root.vertex (id %into))
+   ('root.edge (id %a) %from %into))))
+```
 
 -- messages

@@ -11,43 +11,46 @@ value: sig
   second : B -> C
   edge : (x : A) -> E (second (first x))
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := []
-    table root.C := []
-    table root.E := [a : root.C]
-    table root.first := [a : root.A, b : root.B] primarykey [a]
-    table root.second := [a : root.B, b : root.C] primarykey [a]
-    table root.edge := [x : root.A, a : root.E] primarykey [x]
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ ⊤
-    enforced root.C.foreignKey := root.C [] ⊢ ⊤
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.C []
-    enforced root.first.foreignKey a b := root.first [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B []
-    monitored root.first.total a := a ∈ root.A [] ⊢ root.first [a ↦ a]
-    enforced root.second.foreignKey a b := root.second [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.B [] ∧ b ∈ root.C []
-    monitored root.second.total a := a ∈ root.B [] ⊢ root.second [a ↦ a]
-    enforced root.edge.foreignKey x a b c := root.edge [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.A [] ∧ root.first [a ↦ x, b ↦ c] ∧ root.second [
-      a ↦ c,
-      b ↦ b
-    ] ∧ a ∈ root.E [a ↦ b]
-    monitored root.edge.total x := x ∈ root.A [] ⊢ root.edge [x ↦ x]
-  end
-end
+
+```flir
+('root.A (table (ground) ()))
+('root.B (table (ground) ()))
+('root.C (table (ground) ()))
+('root.E (table (ground) ((%a 'root.C))))
+('root.first (table (ground (primarykey 1)) ((%a 'root.A) (%b 'root.B))))
+('root.second (table (ground (primarykey 1)) ((%a 'root.B) (%b 'root.C))))
+('root.edge (table (ground (primarykey 1)) ((%x 'root.A) (%a 'root.E))))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) ()))
+('root.C.foreignKey (law enforced () (('root.C)) ()))
+('root.E.foreignKey
+ (law enforced ((%a 'root.C)) (('root.E %a)) (('root.C (id %a)))))
+('root.first.foreignKey
+ (law
+  enforced
+  ((%a 'root.A) (%b 'root.B))
+  (('root.first %a %b))
+  (('root.A (id %a)) ('root.B (id %b)))))
+('root.first.total
+ (law monitored ((%a 'root.A)) (('root.A (id %a))) (('root.first %a))))
+('root.second.foreignKey
+ (law
+  enforced
+  ((%a 'root.B) (%b 'root.C))
+  (('root.second %a %b))
+  (('root.B (id %a)) ('root.C (id %b)))))
+('root.second.total
+ (law monitored ((%a 'root.B)) (('root.B (id %a))) (('root.second %a))))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%x 'root.A) (%a 'root.E) (%b 'root.C) (%c 'root.B))
+  (('root.first %x %c) ('root.second %c %b) ('root.edge %x %a))
+  (('root.A (id %x)) ('root.E (id %a) %b))))
+('root.edge.total
+ (law monitored ((%x 'root.A)) (('root.A (id %x))) (('root.edge %x))))
+```
 
 -- messages

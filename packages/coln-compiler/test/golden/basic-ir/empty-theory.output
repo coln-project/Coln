@@ -4,14 +4,11 @@ in mode: Conjunctive
 type: Theory
 value: sig
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-  end
-  definitions
-  end
-  rules
-  end
-end
+
+```flir
+
+```
 
 -- messages

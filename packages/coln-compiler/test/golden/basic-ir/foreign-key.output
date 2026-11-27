@@ -6,18 +6,15 @@ value: sig
   V : Set
   E : V -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-    table root.E := [a : root.V]
-  end
-  definitions
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.V []
-  end
-end
+
+```flir
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V))))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+('root.E.foreignKey
+ (law enforced ((%a 'root.V)) (('root.E %a)) (('root.V (id %a)))))
+```
 
 -- messages

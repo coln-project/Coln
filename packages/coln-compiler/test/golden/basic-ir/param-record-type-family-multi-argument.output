@@ -5,6 +5,7 @@ type: (X : Set) -> (Y : Set) -> (R : X -> Y -> Set) -> (x : X) -> (y : Y) -> Set
 value: X => Y => R => x => y => sig
   entry : R x y
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -14,29 +15,28 @@ value: sig
   R : X -> Y -> Set
   cells : (x : X) -> (y : Y) -> Cell X Y R x y -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.Y := []
-    table root.R := [a : root.X, b : root.Y]
-    table root.cells := [x : root.X, y : root.Y, a.entry : root.R]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.Y.foreignKey := root.Y [] ⊢ ⊤
-    enforced root.R.foreignKey a b := root.R [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.X [] ∧ b ∈ root.Y []
-    enforced root.cells.foreignKey x y a.entry := root.cells [
-      x ↦ x,
-      y ↦ y,
-      a.entry ↦ a.entry
-    ] ⊢ x ∈ root.X [] ∧ y ∈ root.Y [] ∧ a.entry ∈ root.R [a ↦ x, b ↦ y]
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.Y (table (ground) ()))
+('root.R (table (ground) ((%a 'root.X) (%b 'root.Y))))
+('root.cells (table (ground) ((%x 'root.X) (%y 'root.Y) (%a.entry 'root.R))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.Y.foreignKey (law enforced () (('root.Y)) ()))
+('root.R.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b 'root.Y))
+  (('root.R %a %b))
+  (('root.X (id %a)) ('root.Y (id %b)))))
+('root.cells.foreignKey
+ (law
+  enforced
+  ((%x 'root.X) (%y 'root.Y) (%a.entry 'root.R))
+  (('root.cells %x %y %a.entry))
+  (('root.X (id %x)) ('root.Y (id %y)) ('root.R (id %a.entry) %x %y))))
+```
 
 -- messages

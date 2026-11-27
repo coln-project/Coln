@@ -5,16 +5,12 @@ type: Theory
 value: sig
   V : Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-  end
-  definitions
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-  end
-end
+
+```flir
+('root.V (table (ground) ()))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+```
 
 -- messages

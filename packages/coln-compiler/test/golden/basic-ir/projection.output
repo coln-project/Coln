@@ -6,6 +6,7 @@ value: X => sig
   first : X
   second : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -14,32 +15,33 @@ value: sig
   E : X -> Set
   r : (p : Payload X) -> E p.second
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.E := [a : root.X]
-    table root.r := [
-      p.first : root.X,
-      p.second : root.X,
-      a : root.E
-    ] primarykey [p.first, p.second]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.X []
-    enforced root.r.foreignKey p.first p.second a := root.r [
-      p.first ↦ p.first,
-      p.second ↦ p.second,
-      a ↦ a
-    ] ⊢ p.first ∈ root.X [] ∧ p.second ∈ root.X [] ∧ a ∈ root.E [a ↦ p.second]
-    monitored root.r.total p.first p.second := p.first ∈ root.X [] ∧ p.second ∈ root.X [] ⊢ root.r [
-      p.first ↦ p.first,
-      p.second ↦ p.second
-    ]
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.E (table (ground) ((%a 'root.X))))
+('root.r
+ (table
+  (ground (primarykey 2))
+  ((%p.first 'root.X) (%p.second 'root.X) (%a 'root.E))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.E.foreignKey
+ (law enforced ((%a 'root.X)) (('root.E %a)) (('root.X (id %a)))))
+('root.r.foreignKey
+ (law
+  enforced
+  ((%p.first 'root.X) (%p.second 'root.X) (%a 'root.E))
+  (('root.r %p.first %p.second %a))
+  (('root.X (id %p.first))
+   ('root.X (id %p.second))
+   ('root.E (id %a) %p.second))))
+('root.r.total
+ (law
+  monitored
+  ((%p.first 'root.X) (%p.second 'root.X))
+  (('root.X (id %p.first)) ('root.X (id %p.second)))
+  (('root.r %p.first %p.second))))
+```
 
 -- messages

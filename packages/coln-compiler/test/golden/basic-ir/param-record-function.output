@@ -6,6 +6,7 @@ value: X => f => Y => sig
   key : X
   value : Y
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -14,27 +15,28 @@ value: sig
   f : Key -> Key
   boxed : Box Key f String -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.Key := []
-    table root.f := [a : root.Key, b : root.Key] primarykey [a]
-    table root.boxed := [a.key : root.Key, a.value : String]
-  end
-  definitions
-  end
-  rules
-    enforced root.Key.foreignKey := root.Key [] ⊢ ⊤
-    enforced root.f.foreignKey a b := root.f [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.Key [] ∧ b ∈ root.Key []
-    monitored root.f.total a := a ∈ root.Key [] ⊢ root.f [a ↦ a]
-    enforced root.boxed.foreignKey a.key a.value := root.boxed [
-      a.key ↦ a.key,
-      a.value ↦ a.value
-    ] ⊢ a.key ∈ root.Key []
-  end
-end
+
+```flir
+('root.Key (table (ground) ()))
+('root.f (table (ground (primarykey 1)) ((%a 'root.Key) (%b 'root.Key))))
+('root.boxed (table (ground) ((%a.key 'root.Key) (%a.value string))))
+('root.Key.foreignKey (law enforced () (('root.Key)) ()))
+('root.f.foreignKey
+ (law
+  enforced
+  ((%a 'root.Key) (%b 'root.Key))
+  (('root.f %a %b))
+  (('root.Key (id %a)) ('root.Key (id %b)))))
+('root.f.total
+ (law monitored ((%a 'root.Key)) (('root.Key (id %a))) (('root.f %a))))
+('root.boxed.foreignKey
+ (law
+  enforced
+  ((%a.key 'root.Key) (%a.value string))
+  (('root.boxed %a.key %a.value))
+  (('root.Key (id %a.key)))))
+```
 
 -- messages

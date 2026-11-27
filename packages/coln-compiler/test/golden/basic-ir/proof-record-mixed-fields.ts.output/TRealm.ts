@@ -4,7 +4,7 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       X: Runtime.MutableSet<Runtime.RowId<"root.X">>,
-      value: Runtime.MutableRef<{
+      value: Runtime.Ref<{
         first: Runtime.RowId<"root.X">,
         second: Runtime.RowId<"root.X">,
         proof: null,
@@ -14,7 +14,7 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.InductiveViewSet(mstore, "root.X", [])),
         value: (new runtime.BaseTableRef(
           mstore,
           "root.value",

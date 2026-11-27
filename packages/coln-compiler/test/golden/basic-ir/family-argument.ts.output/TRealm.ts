@@ -10,13 +10,13 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        A: (new runtime.BaseSet(mstore, "root.A", [])),
+        A: (new runtime.InductiveViewSet(mstore, "root.A", [])),
         B: (a: Runtime.RowId<"root.A">) => {
-          return (new runtime.BaseSet(mstore, "root.B", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.B", [a]));
         },
         R: (a: Runtime.RowId<"root.A">) => {
           return (b: Runtime.RowId<"root.B">) => {
-            return (new runtime.BaseSet(mstore, "root.R", [a, b]));
+            return (new runtime.InductiveViewSet(mstore, "root.R", [a, b]));
           };
         }
       };

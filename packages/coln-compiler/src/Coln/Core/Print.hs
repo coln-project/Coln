@@ -40,7 +40,7 @@ instance ToNotation BId where
     go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
-instance ToNotation TableName where
+instance ToNotation GlobalSymbol where
   toNotation _ x = N.Raw x.name ()
 
 instance ToNotation (El e) where
@@ -54,7 +54,7 @@ instance ToNotation (El e) where
     Lam _ _ (Abs Anonymous t) ->
       N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (toNotation xs t)
     Proj _ t f -> N.Juxt (toNotation xs t) (N.Field f ())
-    Cons _ d ->
+    Bundle _ d ->
       N.Tuple [field y t | (y, t) <- toList d] ()
      where
       field y t = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)

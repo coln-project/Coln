@@ -5,6 +5,7 @@ type: (P : Prop) -> Prop
 value: P => sig
   proof : P
 end
+
 global entry named Outer
 in mode: Conjunctive
 type: (P : Prop) -> (Q : Prop) -> Prop
@@ -12,6 +13,7 @@ value: P => Q => sig
   nested : Inner P
   direct : Q
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -21,21 +23,20 @@ value: sig
   Q : X -> Prop
   make : (x : X) -> Outer (P x) (Q x)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.P := [a : root.X] primarykey [a]
-    table root.Q := [a : root.X] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.P.foreignKey a := root.P [a ↦ a] ⊢ a ∈ root.X []
-    enforced root.Q.foreignKey a := root.Q [a ↦ a] ⊢ a ∈ root.X []
-    monitored root.make x := x ∈ root.X [] ⊢ root.P [a ↦ x] ∧ root.Q [a ↦ x]
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.P (table (ground (primarykey 1)) ((%a 'root.X))))
+('root.Q (table (ground (primarykey 1)) ((%a 'root.X))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.P.foreignKey
+ (law enforced ((%a 'root.X)) (('root.P %a)) (('root.X (id %a)))))
+('root.Q.foreignKey
+ (law enforced ((%a 'root.X)) (('root.Q %a)) (('root.X (id %a)))))
+('root.make
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) (('root.P %x) ('root.Q %x))))
+```
 
 -- messages

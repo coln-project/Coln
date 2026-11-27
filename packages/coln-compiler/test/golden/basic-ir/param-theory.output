@@ -5,6 +5,7 @@ type: (X : Set) -> Theory
 value: X => sig
   point : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -12,21 +13,20 @@ value: sig
   X : Set
   P : PointOf X
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.P := [a.point : root.X] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.P.foreignKey a.point := root.P [
-      a.point ↦ a.point
-    ] ⊢ a.point ∈ root.X []
-    monitored root.P.total := ⊤ ⊢ root.P []
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.P (table (ground (primarykey 0)) ((%a.point 'root.X))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.P.foreignKey
+ (law
+  enforced
+  ((%a.point 'root.X))
+  (('root.P %a.point))
+  (('root.X (id %a.point)))))
+('root.P.total (law monitored () () (('root.P))))
+```
 
 -- messages

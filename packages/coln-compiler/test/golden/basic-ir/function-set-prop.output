@@ -7,19 +7,15 @@ value: sig
   Y : Prop
   next : X -> Y
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.Y := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.Y.foreignKey := root.Y [] ⊢ ⊤
-    monitored root.next a := a ∈ root.X [] ⊢ root.Y []
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.Y (table (ground (primarykey 0)) ()))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.Y.foreignKey (law enforced () (('root.Y)) ()))
+('root.next (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.Y))))
+```
 
 -- messages

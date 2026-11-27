@@ -43,10 +43,10 @@ refInterface dty ty = case dty of
   Base -> runtimeTy "MutableRef" [ty]
   View -> runtimeTy "Ref" [ty]
 
-tnString :: TableName -> TS.El
+tnString :: GlobalSymbol -> TS.El
 tnString = TS.String . pretty . (.name)
 
-rowId :: TableName -> TS.Ty
+rowId :: GlobalSymbol -> TS.Ty
 rowId x = runtimeTy "RowId" [TS.Singleton $ tnString x]
 
 class GenTy a where
@@ -171,13 +171,13 @@ emptyTSEnv = TSEnv BwdNil Set.empty
 class GenEl a where
   genEl :: TSEnv -> a -> TS.El
 
-createTSArgs :: TSEnv -> TableName -> [SIR.El Set] -> [(TS.El, SIR.Shape)]
+createTSArgs :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> [(TS.El, SIR.Shape)]
 createTSArgs e tn cols = do
   let tsCols = genEl e . (Value,) <$> cols
-  let colShapes = snd <$> (elemAt e.realm.entities tn).columns
+  let colShapes = snd <$> (elemAt e.realm.generators.tables tn).columns
   zip tsCols colShapes
 
-rowIdSet :: TSEnv -> TableName -> [SIR.El Set] -> DefinitionType -> SUniverse Set Theory -> TS.El
+rowIdSet :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> DefinitionType -> SUniverse Set Theory -> TS.El
 rowIdSet env tn cols dty u = do
   let className = case (dty, u) of
         (Base, SPropU) -> "BaseProp"
@@ -191,7 +191,7 @@ rowIdSet env tn cols dty u = do
     , TS.List $ snd $ flattenParams $ createTSArgs env tn cols
     ]
 
-projSet :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> SUniverse Set Theory -> TS.El
+projSet :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> SUniverse Set Theory -> TS.El
 projSet env tn cols retShape u = case u of
   SPropU ->
     TS.New
@@ -215,7 +215,7 @@ projSet env tn cols retShape u = case u of
           ]
       ]
 
-baseTableRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+baseTableRef :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> TS.El
 baseTableRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
@@ -231,7 +231,7 @@ baseTableRef env tn cols retShape = do
         ]
     ]
 
-viewRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+viewRef :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> TS.El
 viewRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
@@ -264,7 +264,7 @@ instance GenEl (DefinitionType, SIR.El Theory) where
             SIR.Abs _ body -> genEl (e{tsLocals = e.tsLocals :> TS.Var x}) (dty, body)
             SIR.AbsConst body -> genEl e (dty, body)
       TS.Lam (TS.Binding x (genTy dom.shape)) (TS.Block [] (Just tsBody))
-    SIR.Cons fields -> TS.Object $ [(mangle x, genEl e (dty, t)) | (x, t) <- toList fields]
+    SIR.Bundle fields -> TS.Object $ [(mangle x, genEl e (dty, t)) | (x, t) <- toList fields]
 
 wrapConstRef :: AccessType -> TS.El -> TS.El
 wrapConstRef (Reference _) t = TS.New (runtime "ConstRef") [t]
@@ -279,7 +279,7 @@ instance GenEl (AccessType, SIR.El Set) where
         Value -> TS.MethodCall ref "value" []
         Reference _ -> ref
     SIR.Proj t x -> wrapConstRef access $ TS.Proj (genEl e (Value, t)) (mangle x)
-    SIR.Cons fields -> wrapConstRef access $ TS.Object [(mangle x, genEl e (Value, t')) | (x, t') <- toList fields]
+    SIR.Bundle fields -> wrapConstRef access $ TS.Object [(mangle x, genEl e (Value, t')) | (x, t') <- toList fields]
     SIR.Lit l -> wrapConstRef access $ TS.Lit l
     SIR.Erased -> wrapConstRef access $ TS.Null
 
@@ -290,9 +290,7 @@ genRealmConstructor r = do
   let auxillaryAssignments = [TS.Assign (TS.QId ["this"] (mangle x)) (genEl env (View, v)) | (x, (v, _)) <- OMap.assocs $ r.auxillaries]
   let body =
         TS.Block
-          ( [ TS.Assign (TS.QId ["this"] "root") (genEl env (Base, r.root))
-            ]
-              ++ auxillaryAssignments
+          ( auxillaryAssignments
           )
           Nothing
   TS.Constructor args body
@@ -303,7 +301,7 @@ genRealmClass x r =
     (mangle x)
     Nothing
     Nothing
-    (TS.Binding "root" (genTy (Base, r.rootType)) : [TS.Binding (mangle x) (genTy (View, ty)) | (x, (_, ty)) <- OMap.assocs r.auxillaries])
+    [TS.Binding (mangle x) (genTy (View, ty)) | (x, (_, ty)) <- OMap.assocs r.auxillaries]
     (genRealmConstructor r)
 
 genRealmFactory :: Name -> SIR.Realm -> TS.FunctionDef

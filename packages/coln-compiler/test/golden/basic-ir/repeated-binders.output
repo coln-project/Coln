@@ -6,21 +6,19 @@ value: sig
   X : Set
   Pair : (x : X) -> (x : X) -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.Pair := [x : root.X, x/a : root.X]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.Pair.foreignKey x x/a := root.Pair [
-      x ↦ x,
-      x/a ↦ x/a
-    ] ⊢ x ∈ root.X [] ∧ x/a ∈ root.X []
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.Pair (table (ground) ((%x 'root.X) (%x/a 'root.X))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.Pair.foreignKey
+ (law
+  enforced
+  ((%x 'root.X) (%x/a 'root.X))
+  (('root.Pair %x %x/a))
+  (('root.X (id %x)) ('root.X (id %x/a)))))
+```
 
 -- messages

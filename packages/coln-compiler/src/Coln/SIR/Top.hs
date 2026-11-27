@@ -4,9 +4,12 @@
 
 module Coln.SIR.Top where
 
-import Control.Arrow ((&&&))
+
+import Data.Key (forWithKey_, forWithKeyM)
 import Data.Map.Ordered qualified as OMap
-import Data.Maybe (fromMaybe)
+
+import Control.Monad (forM)
+import Control.Monad.Reader (local, ask)
 
 import Coln.Common
 import Coln.Core.Params
@@ -16,55 +19,39 @@ import Coln.SIR.Cache
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Separate
 
-split3 :: Dict (Maybe x, Maybe y, Maybe z) -> (Maybe (Dict x), Maybe (Dict y), Maybe (Dict z))
-split3 d = do
-  let d1 = case [(x, y) | (x, (Just y, _, _)) <- toList d] of
-        [] -> Nothing
-        pairs -> Just $ fromList pairs
-  let d2 = case [(x, y) | (x, (_, Just y, _)) <- toList d] of
-        [] -> Nothing
-        pairs -> Just $ fromList pairs
-  let d3 = case [(x, y) | (x, (_, _, Just y)) <- toList d] of
-        [] -> Nothing
-        pairs -> Just $ fromList pairs
-  (d1, d2, d3)
-
-aggregate3 ::
-  (Path -> a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z))) ->
-  (Path -> Trie a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z)))
-aggregate3 f p (Leaf a) = f p a
-aggregate3 f p (Node d) = do
-  let (d1, d2, d3) = split3 $ mapWithKey (\x -> aggregate3 f (p :> x)) d
-  (Node <$> d1, Node <$> d2, Node <$> d3)
-
-cleanTrie :: Trie a -> Maybe (Trie a)
-cleanTrie y@Leaf{} = Just y
-cleanTrie (Node d) = case [(x, y) | (x, Just y) <- toList $ fmap cleanTrie d] of
-  [] -> Nothing
-  pairs -> Just $ Node $ fromList pairs
-
-fromNode :: Maybe (Trie a) -> [(Name, Trie a)]
-fromNode Nothing = []
-fromNode (Just Leaf{}) = panic "leaf at top of generator trie"
-fromNode (Just (Node d)) = toList d
-
-trieToOMap :: Trie a -> OMap TableName a
-trieToOMap t = OMap.fromList [(tableName k, v) | (k, v) <- toList t]
+locals :: Trie a -> (a -> SIR.GeneratorWriter ()) -> SIR.GeneratorWriter ()
+locals (Leaf x) f = f x
+locals (Node d) f = forWithKey_ d (\x t -> local (:> x) (locals t f))
 
 mirToSIR :: MIR.Realm -> SIR.Realm
 mirToSIR r = do
-  let (_, _, root) = cache "root" (BwdNil :> "root") emptyScope r.root
-  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (tableName p)) BwdNil r.generators
-  let (names, cached) = unzip $ map (fst &&& uncurry cacheTop) $ OMap.assocs r.realmDefinitions
-  let auxTypes = map (\(_, d) -> theoryShapeOf (CtxShape 0 BwdNil) d.ty d.body.val) $ OMap.assocs r.realmDefinitions
-  let (cachedE, cachedD, cachedS) = unzip3 cached
-  let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]
-  let viewD = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedD)]
-  SIR.Realm
-    { entities = trieToOMap $ Node $ fromList $ fromNode rootE ++ [("view", viewE)]
-    , definitions = trieToOMap $ Node $ fromList $ fromNode rootD ++ [("view", viewD)]
-    , rules = trieToOMap $ fromMaybe emptyNode rootR
-    , root = root
-    , rootType = theoryShapeOf (CtxShape 0 BwdNil) r.rootType r.root
-    , auxillaries = OMap.fromList $ zip names (zip cachedS auxTypes)
-    }
+  let (auxillaries, generators) = SIR.runGeneratorWriter $ do
+        root <- cache "root" emptyScope r.root
+        locals r.generators separateGenerator
+        let rootTy = theoryShapeOf (CtxShape 0 BwdNil) r.rootType r.root
+        fmap (OMap.fromList . (("root", (root, rootTy)):)) $ local (:> "view") $ forM (OMap.assocs r.realmDefinitions) $ \(x, d) -> local (:> x) $ do
+          el <- cacheTop x d
+          let ty = theoryShapeOf (CtxShape 0 BwdNil) d.ty d.body.val
+          pure (x, (el, ty))
+  SIR.Realm generators auxillaries
+        
+
+-- mirToSIR :: MIR.Realm -> SIR.Realm
+-- mirToSIR r = do
+--   let (_, _, root) = cache "root" (BwdNil :> "root") emptyScope r.root
+--   let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (manglePath p)) BwdNil r.generators
+--   let (names, cached) = unzip $ map (fst &&& uncurry cacheTop) $ OMap.assocs r.realmDefinitions
+--   let auxTypes = map (\(_, d) -> theoryShapeOf (CtxShape 0 BwdNil) d.ty d.body.val) $ OMap.assocs r.realmDefinitions
+--   let (cachedE, cachedD, cachedS) = unzip3 cached
+--   let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]
+--   let viewD = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedD)]
+--   let generators = SIR.Generators
+--         { tables = trieToOMap $ Node $ fromList $ fromNode rootE ++ [("view", viewE)]
+--         , unions = trieToOMap $ Node $ fromList []
+--         , rules = trieToOMap $ Node $ fromList $ fromNode rootD ++ [("view", viewD)]
+--         , laws = trieToOMap $ fromMaybe emptyNode rootR
+--         }
+--   SIR.Realm
+--     { generators = generators
+--     , auxillaries = OMap.fromList $ zip names (zip cachedS auxTypes)
+--     }

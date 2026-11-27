@@ -14,12 +14,12 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         E: (a: number) => {
           return (b: number) => {
-            return (new runtime.BaseSet(mstore, "root.E", [a, b]));
+            return (new runtime.InductiveViewSet(mstore, "root.E", [a, b]));
           };
         },
         R: (p: { first: number, second: number }) => {
           return (a: Runtime.RowId<"root.E">) => {
-            return (new runtime.BaseSet(
+            return (new runtime.InductiveViewSet(
               mstore,
               "root.R",
               [p.first, p.second, a]

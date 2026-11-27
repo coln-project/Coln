@@ -4,6 +4,12 @@
 
 module Coln.SIR.Separate where
 
+import Control.Monad (forM_)
+
+import Control.Monad.Reader.Class
+
+import Data.Key (mapAccumWithKeyL)
+
 import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Layout (argName)
@@ -13,10 +19,6 @@ import Coln.MIR.Value qualified as V
 import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
 
-import Control.Arrow (second)
-import Data.Key (mapAccumWithKeyL)
-import Data.Maybe (mapMaybe, maybeToList)
-
 type CtxLen = Int
 
 class Separate a b | a -> b where
@@ -24,7 +26,7 @@ class Separate a b | a -> b where
 
 instance Separate V.Head (S.El Set) where
   separate n = \case
-    V.Var (FId i) -> S.Var (BId (n - i - 1))
+    V.Var i -> S.Var (reverseId n i)
     V.Lookup tn args ret -> case shapeOf ret of
       S.Unstored -> S.Erased
       sh -> S.Lookup tn (separate n <$> args) sh
@@ -35,7 +37,7 @@ instance Separate (V.El N Set) (S.El Set) where
       let go t BwdNil = t
           go t (xs :> x) = S.Proj (go t xs) x
       go (separate n ne.head) ne.spine
-    V.Cons fields -> S.Cons $ separate n <$> fields
+    V.Bundle fields -> S.Bundle $ separate n <$> fields
     V.Lit l -> S.Lit l
     V.Erased -> S.Erased
 
@@ -83,90 +85,99 @@ theoryShapeOf cs a v = case a of
 propAt :: CtxLen -> V.Ty N Set -> V.El N Set -> S.Prop
 propAt n = \case
   V.EltOf _ x args -> \v ->
-    S.Atom x (separate n v) (separate n <$> args)
+    S.PAtom $ S.Atom x (separate n v) (separate n <$> args)
   V.Record rt -> \v -> do
     let go [] _ = []
         go ((x, k) : rest) vs = do
           let v' = V.proj v x
           (x, propAt n (k vs) v') : go rest (vs :> Pair SSet v')
-    S.And $ fromList $ go (toList rt.fieldTypes) rt.capture
+    S.PAnd $ fromList $ go (toList rt.fieldTypes) rt.capture
   V.BuiltinTy _ -> \_ -> S.trueProp
   V.Eq at lhs rhs -> \_ ->
-    S.Eq (shapeOf at) (separate n lhs) (separate n rhs)
+    S.PEq (shapeOf at) (separate n lhs) (separate n rhs)
 
 instance Separate (V.Ty N Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
 
-defsOf :: [(Name, S.Query)] -> S.Prop -> Maybe (Trie Definition)
-defsOf cols = \case
-  S.Atom tn _ args -> Just $ Leaf $ Definition cols tn args
-  S.And d -> do
-    -- this should not be possible, but if it were, it should do this
-    let pairs = (mapMaybe . traverse) (defsOf cols) $ toList d
-    case pairs of
-      [] -> Nothing
-      _ -> Just $ Node $ fromList pairs
-  S.Eq _ _ _ -> panic "not supported: path constructor"
+defsOf :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
+defsOf cols ante = \case
+  S.PAtom a -> emitRule (Rule cols ante a)
+  S.PAnd d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols ante p)
+  S.PEq _ _ _ -> panic "not supported: path constructor"
 
-separateGenerator :: TableName -> V.Generator -> (Maybe (Trie Entity), Maybe (Trie Definition), Maybe (Trie Rule))
-separateGenerator tn gen = do
+addToVariants :: S.Shape -> GeneratorWriter ()
+addToVariants = \case
+  S.Scalar (S.RowId tn) -> emitVariantOf tn
+  S.Scalar _ -> panic "not supported: constructor for primitive type"
+  S.Tuple _ -> panic "not supported: constructor producing a tuple"
+  S.Unstored -> pure ()
+
+addParameterRules :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
+addParameterRules ctx ante = \case
+  S.PAtom a ->
+    emitRule $ Rule ctx ante a
+  S.PAnd _ -> panic "not supported: constructor producing a tuple"
+  S.PEq _ _ _ -> panic "not supported: constructor producing an equality"
+
+atomOfArgs :: GlobalSymbol -> Int -> S.Prop
+atomOfArgs tn n = atomOfArgs' tn n n V.Erased
+
+atomOfArgs' :: GlobalSymbol -> Int -> Int -> V.El N Set -> S.Prop
+atomOfArgs' tn n k v = S.PAtom $ S.Atom tn (separate n v) [S.Var (reverseId n i) | i <- fIdsUpTo k]
+
+makePrimaryKey :: SUniverse Set Theory -> LogicalPrimaryKey -> Maybe LogicalPrimaryKey
+makePrimaryKey SPropU k = Just k
+makePrimaryKey SSetU _ = Nothing
+
+separateGenerator :: V.Generator -> GeneratorWriter ()
+separateGenerator gen = do
+  x <- currentSymbol
   let names = toList gen.paramNames
-  let argNum = length names
-  let septys = uncurry separate <$> zip [0 ..] (toList gen.paramTypes)
-  let cols = zip names septys
+  let types = toList gen.paramTypes
+  let shapes = shapeOf <$> types
+  let ctx = zip names shapes
+  let n = length names
+  let props = [propAt n a (V.local i) | (i, a) <- fIdsUpTo n `zip` types]
+  let pkey = LogicalPrimaryKey n
   case gen.codom of
     V.GenU u -> do
-      let primaryKey = case u of
-            SSetU -> Nothing
-            SPropU -> Just [0 .. argNum - 1]
-      let entityVariant = case gen.providence of
-            Holy -> View Memoized
-            Profane -> Table
-      let entity = Entity entityVariant (second (.shape) <$> cols) primaryKey
-      let atom = S.Atom tn S.Erased [S.Var (BId $ argNum - i - 1) | i <- [0 .. argNum - 1]]
-      let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
-      let rules = case gen.providence of
-            Holy -> Nothing
-            Profane -> Just $ Node $ fromList [("foreignKey", Leaf foreignKey)]
-      (Just $ Leaf entity, Nothing, rules)
+      case gen.providence of
+        Holy -> case u of
+          SPropU -> emitTable (Table (View Materialized) ctx)
+          SSetU -> emitTable (Table (Union BwdNil) ctx)
+        Profane -> do
+          emitTable (Table (Ground (makePrimaryKey u pkey)) ctx)
+          local (:> "foreignKey") $ emitLaw
+            (Law Enforced ctx [atomOfArgs x n] props)
     V.GenLift a -> case hlevelOf a of
-      HUnit -> (Nothing, Nothing, Nothing)
+      HUnit -> pure () 
       HProp -> do
-        let codProp = propAt argNum a V.Erased
+        let codProp = propAt n a V.Erased
         case gen.providence of
-          Holy -> do
-            (Nothing, defsOf cols codProp, Nothing)
-          Profane -> do
-            let rule = Rule Monitored Antecedent cols S.trueProp codProp
-            (Nothing, Nothing, Just $ Leaf rule)
+          Holy -> defsOf ctx props codProp
+          Profane -> emitLaw (Law Monitored ctx props [codProp])
       HSet -> do
-        let resultName = freshNameFor names
-        let resultQ = separate argNum a
-
+        let retName = freshNameFor names
+        let retShape = shapeOf a
+        let ctx' = ctx ++ [(retName, retShape)]
+        let n' = n + 1
         case gen.providence of
           Holy -> do
-            let view = Entity (View Memoized) (second (.shape) <$> cols) (Just [0 .. argNum - 1])
-
-            let collect = Definition cols tn [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-
-            let domProp = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-            let domQ = S.Query S.Unstored (S.Abs Nothing domProp)
-            let codProp = propAt (argNum + 1) a V.Erased
-            let construct = defsOf (cols ++ [(resultName, domQ)]) codProp
-            (Just $ Leaf view, Just $ Node $ fromList $ ("collect", Leaf collect) : (maybeToList . sequence) ("construct", construct), Nothing)
+            emitTable $ Table Cons ctx
+            local (:> "foreignKey") $ emitLaw
+               (Law Enforced ctx [atomOfArgs x n] props)
+            addToVariants (shapeOf a)
+            let last = V.local (FId n)
+            local (:> "params") $
+              addParameterRules ctx' [atomOfArgs' x n' n last] (propAt n' a last)
           Profane -> do
-            let allCols = cols ++ [(resultName, resultQ)]
-            let table = Entity Table (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
-
-            let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i)) | i <- [0 .. argNum]]
-            let foreignKey = Rule Enforced Consequent allCols foreignKeyAnte S.trueProp
-
-            let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-            let total = Rule Monitored Antecedent cols S.trueProp totalCons
-
-            (Just $ Leaf table, Nothing, Just $ Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)])
+            let types' = types ++ [a]
+            let props' =
+                  [propAt n' a (V.local i) | (i, a) <- fIdsUpTo n' `zip` types']
+            emitTable $ Table (Ground (Just pkey)) ctx' 
+            local (:> "foreignKey") $ emitLaw
+              (Law Enforced ctx' [atomOfArgs x n'] props')
+            local (:> "total") $ emitLaw
+              (Law Monitored ctx props [atomOfArgs x n])
       _ -> panic "bad h-level of cod"
-
--- separateRealm :: V.Realm -> Realm
--- separateRealm r = _

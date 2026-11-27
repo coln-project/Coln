@@ -12,7 +12,11 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         boxed: (x: number) => {
           return (a: { value: string }) => {
-            return (new runtime.BaseSet(mstore, "root.boxed", [x, a.value]));
+            return (new runtime.InductiveViewSet(
+              mstore,
+              "root.boxed",
+              [x, a.value]
+            ));
           };
         }
       };

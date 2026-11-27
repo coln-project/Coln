@@ -12,6 +12,7 @@ value: sig
   red-blue-over : (v : red) -> red-over v -> (w : blue) -> blue-over w -> Set
   blue-red-over : (w : blue) -> blue-over w -> (v : red) -> red-over v -> Set
 end
+
 global entry named BipartiteOverConnection
 in mode: Conjunctive
 type: (G : BipartiteGraphOver) -> Theory
@@ -31,162 +32,162 @@ value: G => sig
   red/trans : (v0 : G.red) -> (x0 : G.red-over v0) -> (v1 : G.red) -> (x1 : G.red-over v1) -> (w0 : G.blue) -> (y0 : G.blue-over w0) -> (w1 : G.blue) -> (y1 : G.blue-over w1) -> G.red-blue-over v0 x0 w0 y0 -> blue-blue-over w0 y0 w1 y1 -> G.blue-red-over w1 y1 v1 x1 -> red-red-over v0 x0 v1 x1
   blue/trans : (w0 : G.blue) -> (y0 : G.blue-over w0) -> (w1 : G.blue) -> (y1 : G.blue-over w1) -> (v0 : G.red) -> (x0 : G.red-over v0) -> (v1 : G.red) -> (x1 : G.red-over v1) -> G.blue-red-over w0 y0 v0 x0 -> red-red-over v0 x0 v1 x1 -> G.red-blue-over v1 x1 w1 y1 -> blue-blue-over w0 y0 w1 y1
 end
+
 realm named BipartiteGraphOverRealm
-lowered: flatrealm
-  entities
-    table root.red := []
-    table root.blue := []
-    table root.red-blue := [a : root.red, b : root.blue]
-    table root.blue-red := [a : root.blue, b : root.red]
-    table root.red-over := [a : root.red]
-    table root.blue-over := [a : root.blue]
-    table root.red-blue-over := [
-      v : root.red,
-      a : root.red-over,
-      w : root.blue,
-      b : root.blue-over
-    ]
-    table root.blue-red-over := [
-      w : root.blue,
-      a : root.blue-over,
-      v : root.red,
-      b : root.red-over
-    ]
-    view init.connection-info.red-red := [
-      a : root.red,
-      b : root.red
-    ] primarykey [a, b]
-    view init.connection-info.blue-blue := [
-      a : root.blue,
-      b : root.blue
-    ] primarykey [a, b]
-    view init.connection-info.red-red-over := [
-      v0 : root.red,
-      a : root.red-over,
-      v1 : root.red,
-      b : root.red-over
-    ] primarykey [v0, a, v1, b]
-    view init.connection-info.blue-blue-over := [
-      w0 : root.blue,
-      a : root.blue-over,
-      w1 : root.blue,
-      b : root.blue-over
-    ] primarykey [w0, a, w1, b]
-  end
-  definitions
-    chased init.connection-info.red/refl v := v ∈ root.red [] ⊢ init.connection-info.red-red [
-      a ↦ v,
-      b ↦ v
-    ]
-    chased init.connection-info.blue/refl w := w ∈ root.blue [] ⊢ init.connection-info.blue-blue [
-      a ↦ w,
-      b ↦ w
-    ]
-    chased init.connection-info.red/trans v0 x0 v1 x1 w0 y0 w1 y1 a c := v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
-      a ↦ v0
-    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
-      a ↦ v1
-    ] ∧ w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
-      a ↦ w0
-    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
-      a ↦ w1
-    ] ∧ a ∈ root.red-blue-over [
-      v ↦ v0,
-      a ↦ x0,
-      w ↦ w0,
-      b ↦ y0
-    ] ∧ init.connection-info.blue-blue-over [
-      w0 ↦ w0,
-      a ↦ y0,
-      w1 ↦ w1,
-      b ↦ y1
-    ] ∧ c ∈ root.blue-red-over [
-      w ↦ w1,
-      a ↦ y1,
-      v ↦ v1,
-      b ↦ x1
-    ] ⊢ init.connection-info.red-red-over [v0 ↦ v0, a ↦ x0, v1 ↦ v1, b ↦ x1]
-    chased init.connection-info.blue/trans w0 y0 w1 y1 v0 x0 v1 x1 a c := w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
-      a ↦ w0
-    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
-      a ↦ w1
-    ] ∧ v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
-      a ↦ v0
-    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
-      a ↦ v1
-    ] ∧ a ∈ root.blue-red-over [
-      w ↦ w0,
-      a ↦ y0,
-      v ↦ v0,
-      b ↦ x0
-    ] ∧ init.connection-info.red-red-over [
-      v0 ↦ v0,
-      a ↦ x0,
-      v1 ↦ v1,
-      b ↦ x1
-    ] ∧ c ∈ root.red-blue-over [
-      v ↦ v1,
-      a ↦ x1,
-      w ↦ w1,
-      b ↦ y1
-    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w0, a ↦ y0, w1 ↦ w1, b ↦ y1]
-    chased init.connection-info.red-over/lift v0 x0 v1 x1 := v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
-      a ↦ v0
-    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
-      a ↦ v1
-    ] ∧ init.connection-info.red-red [
-      a ↦ v0,
-      b ↦ v1
-    ] ⊢ init.connection-info.red-red-over [v0 ↦ v0, a ↦ x0, v1 ↦ v1, b ↦ x1]
-    chased init.connection-info.blue-over/lift w0 y0 w1 y1 := w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
-      a ↦ w0
-    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
-      a ↦ w1
-    ] ∧ init.connection-info.blue-blue [
-      a ↦ w0,
-      b ↦ w1
-    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w0, a ↦ y0, w1 ↦ w1, b ↦ y1]
-    chased init.connection-info.red-over/refl v x := v ∈ root.red [] ∧ x ∈ root.red-over [
-      a ↦ v
-    ] ⊢ init.connection-info.red-red-over [v0 ↦ v, a ↦ x, v1 ↦ v, b ↦ x]
-    chased init.connection-info.blue-over/refl w y := w ∈ root.blue [] ∧ y ∈ root.blue-over [
-      a ↦ w
-    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w, a ↦ y, w1 ↦ w, b ↦ y]
-  end
-  rules
-    enforced root.red.foreignKey := root.red [] ⊢ ⊤
-    enforced root.blue.foreignKey := root.blue [] ⊢ ⊤
-    enforced root.red-blue.foreignKey a b := root.red-blue [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.red [] ∧ b ∈ root.blue []
-    enforced root.blue-red.foreignKey a b := root.blue-red [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.blue [] ∧ b ∈ root.red []
-    enforced root.red-over.foreignKey a := root.red-over [
-      a ↦ a
-    ] ⊢ a ∈ root.red []
-    enforced root.blue-over.foreignKey a := root.blue-over [
-      a ↦ a
-    ] ⊢ a ∈ root.blue []
-    enforced root.red-blue-over.foreignKey v a w b := root.red-blue-over [
-      v ↦ v,
-      a ↦ a,
-      w ↦ w,
-      b ↦ b
-    ] ⊢ v ∈ root.red [] ∧ a ∈ root.red-over [
-      a ↦ v
-    ] ∧ w ∈ root.blue [] ∧ b ∈ root.blue-over [a ↦ w]
-    enforced root.blue-red-over.foreignKey w a v b := root.blue-red-over [
-      w ↦ w,
-      a ↦ a,
-      v ↦ v,
-      b ↦ b
-    ] ⊢ w ∈ root.blue [] ∧ a ∈ root.blue-over [
-      a ↦ w
-    ] ∧ v ∈ root.red [] ∧ b ∈ root.red-over [a ↦ v]
-  end
-end
+
+```flir
+('root.red (table (ground) ()))
+('root.blue (table (ground) ()))
+('root.red-blue (table (ground) ((%a 'root.red) (%b 'root.blue))))
+('root.blue-red (table (ground) ((%a 'root.blue) (%b 'root.red))))
+('root.red-over (table (ground) ((%a 'root.red))))
+('root.blue-over (table (ground) ((%a 'root.blue))))
+('root.red-blue-over
+ (table
+  (ground)
+  ((%v 'root.red) (%a 'root.red-over) (%w 'root.blue) (%b 'root.blue-over))))
+('root.blue-red-over
+ (table
+  (ground)
+  ((%w 'root.blue) (%a 'root.blue-over) (%v 'root.red) (%b 'root.red-over))))
+('init.connection-info.red-red (table view ((%a 'root.red) (%b 'root.red))))
+('init.connection-info.blue-blue (table view ((%a 'root.blue) (%b 'root.blue))))
+('init.connection-info.red-red-over
+ (table
+  view
+  ((%v0 'root.red) (%a 'root.red-over) (%v1 'root.red) (%b 'root.red-over))))
+('init.connection-info.blue-blue-over
+ (table
+  view
+  ((%w0 'root.blue)
+   (%a 'root.blue-over)
+   (%w1 'root.blue)
+   (%b 'root.blue-over))))
+('init.connection-info.red/refl
+ (rule
+  ((%v 'root.red))
+  (('root.red (id %v)))
+  ('init.connection-info.red-red %v %v)))
+('init.connection-info.blue/refl
+ (rule
+  ((%w 'root.blue))
+  (('root.blue (id %w)))
+  ('init.connection-info.blue-blue %w %w)))
+('init.connection-info.red-over/lift
+ (rule
+  ((%v0 'root.red) (%x0 'root.red-over) (%v1 'root.red) (%x1 'root.red-over))
+  (('root.red (id %v0))
+   ('root.red-over (id %x0) %v0)
+   ('root.red (id %v1))
+   ('root.red-over (id %x1) %v1)
+   ('init.connection-info.red-red %v0 %v1))
+  ('init.connection-info.red-red-over %v0 %x0 %v1 %x1)))
+('init.connection-info.blue-over/lift
+ (rule
+  ((%w0 'root.blue)
+   (%y0 'root.blue-over)
+   (%w1 'root.blue)
+   (%y1 'root.blue-over))
+  (('root.blue (id %w0))
+   ('root.blue-over (id %y0) %w0)
+   ('root.blue (id %w1))
+   ('root.blue-over (id %y1) %w1)
+   ('init.connection-info.blue-blue %w0 %w1))
+  ('init.connection-info.blue-blue-over %w0 %y0 %w1 %y1)))
+('init.connection-info.red-over/refl
+ (rule
+  ((%v 'root.red) (%x 'root.red-over))
+  (('root.red (id %v)) ('root.red-over (id %x) %v))
+  ('init.connection-info.red-red-over %v %x %v %x)))
+('init.connection-info.blue-over/refl
+ (rule
+  ((%w 'root.blue) (%y 'root.blue-over))
+  (('root.blue (id %w)) ('root.blue-over (id %y) %w))
+  ('init.connection-info.blue-blue-over %w %y %w %y)))
+('init.connection-info.red/trans
+ (rule
+  ((%v0 'root.red)
+   (%x0 'root.red-over)
+   (%v1 'root.red)
+   (%x1 'root.red-over)
+   (%w0 'root.blue)
+   (%y0 'root.blue-over)
+   (%w1 'root.blue)
+   (%y1 'root.blue-over)
+   (%a 'root.red-blue-over)
+   (%c 'root.blue-red-over))
+  (('root.red (id %v0))
+   ('root.red-over (id %x0) %v0)
+   ('root.red (id %v1))
+   ('root.red-over (id %x1) %v1)
+   ('root.blue (id %w0))
+   ('root.blue-over (id %y0) %w0)
+   ('root.blue (id %w1))
+   ('root.blue-over (id %y1) %w1)
+   ('root.red-blue-over (id %a) %v0 %x0 %w0 %y0)
+   ('init.connection-info.blue-blue-over %w0 %y0 %w1 %y1)
+   ('root.blue-red-over (id %c) %w1 %y1 %v1 %x1))
+  ('init.connection-info.red-red-over %v0 %x0 %v1 %x1)))
+('init.connection-info.blue/trans
+ (rule
+  ((%w0 'root.blue)
+   (%y0 'root.blue-over)
+   (%w1 'root.blue)
+   (%y1 'root.blue-over)
+   (%v0 'root.red)
+   (%x0 'root.red-over)
+   (%v1 'root.red)
+   (%x1 'root.red-over)
+   (%a 'root.blue-red-over)
+   (%c 'root.red-blue-over))
+  (('root.blue (id %w0))
+   ('root.blue-over (id %y0) %w0)
+   ('root.blue (id %w1))
+   ('root.blue-over (id %y1) %w1)
+   ('root.red (id %v0))
+   ('root.red-over (id %x0) %v0)
+   ('root.red (id %v1))
+   ('root.red-over (id %x1) %v1)
+   ('root.blue-red-over (id %a) %w0 %y0 %v0 %x0)
+   ('init.connection-info.red-red-over %v0 %x0 %v1 %x1)
+   ('root.red-blue-over (id %c) %v1 %x1 %w1 %y1))
+  ('init.connection-info.blue-blue-over %w0 %y0 %w1 %y1)))
+('root.red.foreignKey (law enforced () (('root.red)) ()))
+('root.blue.foreignKey (law enforced () (('root.blue)) ()))
+('root.red-blue.foreignKey
+ (law
+  enforced
+  ((%a 'root.red) (%b 'root.blue))
+  (('root.red-blue %a %b))
+  (('root.red (id %a)) ('root.blue (id %b)))))
+('root.blue-red.foreignKey
+ (law
+  enforced
+  ((%a 'root.blue) (%b 'root.red))
+  (('root.blue-red %a %b))
+  (('root.blue (id %a)) ('root.red (id %b)))))
+('root.red-over.foreignKey
+ (law enforced ((%a 'root.red)) (('root.red-over %a)) (('root.red (id %a)))))
+('root.blue-over.foreignKey
+ (law enforced ((%a 'root.blue)) (('root.blue-over %a)) (('root.blue (id %a)))))
+('root.red-blue-over.foreignKey
+ (law
+  enforced
+  ((%v 'root.red) (%a 'root.red-over) (%w 'root.blue) (%b 'root.blue-over))
+  (('root.red-blue-over %v %a %w %b))
+  (('root.red (id %v))
+   ('root.red-over (id %a) %v)
+   ('root.blue (id %w))
+   ('root.blue-over (id %b) %w))))
+('root.blue-red-over.foreignKey
+ (law
+  enforced
+  ((%w 'root.blue) (%a 'root.blue-over) (%v 'root.red) (%b 'root.red-over))
+  (('root.blue-red-over %w %a %v %b))
+  (('root.blue (id %w))
+   ('root.blue-over (id %a) %w)
+   ('root.red (id %v))
+   ('root.red-over (id %b) %v))))
+```
 
 -- messages

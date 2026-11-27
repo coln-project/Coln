@@ -5,7 +5,7 @@ export function createRealm(runtime: typeof Runtime) {
     root: { V: Runtime.MutableSet<Runtime.RowId<"root.V">> };
 
     constructor(mstore: Runtime.ManagedStore) {
-      this.root = { V: (new runtime.BaseSet(mstore, "root.V", [])) };
+      this.root = { V: (new runtime.InductiveViewSet(mstore, "root.V", [])) };
     }
   };
 }

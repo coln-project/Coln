@@ -34,7 +34,7 @@ toNominative = \case
           V.Clo x f -> V.Clo x (descriptionToNominative . f)
           V.CloConst v -> V.CloConst (descriptionToNominative v)
     V.Lam fv a clo'
-  V.Cons fields -> V.Cons $ descriptionToNominative <$> fields
+  V.Bundle fields -> V.Bundle $ descriptionToNominative <$> fields
 
 interpGlobals :: Core.Globals -> V.Globals
 interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions

@@ -46,6 +46,8 @@ library
     Coln.FLIR.Flatten
     Coln.FLIR.Top
     Coln.FLIR.Value
+    Coln.FLIR.Serialization
+    Coln.FLIR.Sexp
     Coln.Frontend.Diagnostics
     Coln.Frontend.Notation
     Coln.Frontend.Parser
@@ -120,7 +122,9 @@ library
     containers,
     diagnostician,
     directory,
+    dlist,
     filepath,
+    flatparse,
     fnotation,
     hashable,
     keys,

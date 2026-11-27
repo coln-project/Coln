@@ -4,15 +4,15 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       X: Runtime.MutableSet<Runtime.RowId<"root.X">>,
-      count: (a: Runtime.RowId<"root.X">) => Runtime.MutableRef<number>,
-      label: (a: Runtime.RowId<"root.X">) => Runtime.MutableRef<string>,
-      countIs19: (x: Runtime.RowId<"root.X">) => Runtime.MutableRef<null>,
-      labelIsZombocom: (x: Runtime.RowId<"root.X">) => Runtime.MutableRef<null>
+      count: (a: Runtime.RowId<"root.X">) => Runtime.Ref<number>,
+      label: (a: Runtime.RowId<"root.X">) => Runtime.Ref<string>,
+      countIs19: (x: Runtime.RowId<"root.X">) => Runtime.Ref<null>,
+      labelIsZombocom: (x: Runtime.RowId<"root.X">) => Runtime.Ref<null>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.InductiveViewSet(mstore, "root.X", [])),
         count: (a: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(
             mstore,

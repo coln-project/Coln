@@ -5,6 +5,7 @@ type: Set
 value: sig
   rank : Int
 end
+
 global entry named Outer
 in mode: Conjunctive
 type: Set
@@ -12,29 +13,28 @@ value: sig
   name : String
   inner : Inner
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
 value: sig
   payload : Outer
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root := [
-      a.payload.name : String,
-      a.payload.inner.rank : Int
-    ] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.foreignKey a.payload.name a.payload.inner.rank := root [
-      a.payload.name ↦ a.payload.name,
-      a.payload.inner.rank ↦ a.payload.inner.rank
-    ] ⊢ ⊤
-    monitored root.total := ⊤ ⊢ root []
-  end
-end
+
+```flir
+('root
+ (table
+  (ground (primarykey 0))
+  ((%a.payload.name string) (%a.payload.inner.rank int))))
+('root.foreignKey
+ (law
+  enforced
+  ((%a.payload.name string) (%a.payload.inner.rank int))
+  (('root %a.payload.name %a.payload.inner.rank))
+  ()))
+('root.total (law monitored () () (('root))))
+```
 
 -- messages

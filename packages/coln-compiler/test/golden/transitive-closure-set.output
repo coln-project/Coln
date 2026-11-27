@@ -6,6 +6,7 @@ value: sig
   V : Set
   E : V -> V -> Set
 end
+
 global entry named TransExt
 in mode: Conjunctive
 type: (G : Graph) -> Theory
@@ -14,56 +15,67 @@ value: G => sig
   refl : (v : G.V) -> connected v v
   snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> connected v0 v1 -> G.E v1 v2 -> connected v0 v2
 end
+
 realm named TransitiveClosureSetRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-    table root.E := [a : root.V, b : root.V]
-    view init.trans-closure.connected := [a : root.V, b : root.V]
-    view init.trans-closure.refl := [v : root.V] primarykey [v]
-    view init.trans-closure.snoc := [
-      v0 : root.V,
-      v1 : root.V,
-      v2 : root.V,
-      a : init.trans-closure.connected,
-      b : root.E
-    ] primarykey [v0, v1, v2, a, b]
-  end
-  definitions
-    chased init.trans-closure.refl.collect v := v ∈ root.V [] ⊢ init.trans-closure.refl [
-      v ↦ v
-    ]
-    chased init.trans-closure.refl.construct v := v ∈ root.V [] ∧ init.trans-closure.refl [] ⊢ init.trans-closure.connected [
-      a ↦ v,
-      b ↦ v
-    ]
-    chased init.trans-closure.snoc.collect v0 v1 v2 a b := v0 ∈ root.V [] ∧ v1 ∈ root.V [] ∧ v2 ∈ root.V [] ∧ a ∈ init.trans-closure.connected [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ b ∈ root.E [a ↦ v1, b ↦ v2] ⊢ init.trans-closure.snoc [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      v2 ↦ v2,
-      a ↦ a,
-      b ↦ b
-    ]
-    chased init.trans-closure.snoc.construct v0 v1 v2 a b := v0 ∈ root.V [] ∧ v1 ∈ root.V [] ∧ v2 ∈ root.V [] ∧ a ∈ init.trans-closure.connected [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ b ∈ root.E [a ↦ v1, b ↦ v2] ∧ init.trans-closure.snoc [
-      v0 ↦ v1,
-      v1 ↦ v2,
-      v2 ↦ a,
-      a ↦ b
-    ] ⊢ init.trans-closure.connected [a ↦ v0, b ↦ v2]
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-    enforced root.E.foreignKey a b := root.E [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
-  end
-end
+
+```flir
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V) (%b 'root.V))))
+('init.trans-closure.refl (table cons ((%v 'root.V))))
+('init.trans-closure.snoc
+ (table
+  cons
+  ((%v0 'root.V)
+   (%v1 'root.V)
+   (%v2 'root.V)
+   (%a 'init.trans-closure.connected)
+   (%b 'root.E))))
+('init.trans-closure.connected
+ (table
+  (union 'init.trans-closure.refl 'init.trans-closure.snoc)
+  ((%a 'root.V) (%b 'root.V))))
+('init.trans-closure.refl.params
+ (rule
+  ((%v 'root.V) (%a 'init.trans-closure.connected))
+  (('init.trans-closure.refl (id %a) %v))
+  ('init.trans-closure.connected (id %a) %v %v)))
+('init.trans-closure.snoc.params
+ (rule
+  ((%v0 'root.V)
+   (%v1 'root.V)
+   (%v2 'root.V)
+   (%a 'init.trans-closure.connected)
+   (%b 'root.E)
+   (%c 'init.trans-closure.connected))
+  (('init.trans-closure.snoc (id %c) %v0 %v1 %v2 %a %b))
+  ('init.trans-closure.connected (id %c) %v0 %v2)))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+('root.E.foreignKey
+ (law
+  enforced
+  ((%a 'root.V) (%b 'root.V))
+  (('root.E %a %b))
+  (('root.V (id %a)) ('root.V (id %b)))))
+('init.trans-closure.refl.foreignKey
+ (law
+  enforced
+  ((%v 'root.V))
+  (('init.trans-closure.refl %v))
+  (('root.V (id %v)))))
+('init.trans-closure.snoc.foreignKey
+ (law
+  enforced
+  ((%v0 'root.V)
+   (%v1 'root.V)
+   (%v2 'root.V)
+   (%a 'init.trans-closure.connected)
+   (%b 'root.E))
+  (('init.trans-closure.snoc %v0 %v1 %v2 %a %b))
+  (('root.V (id %v0))
+   ('root.V (id %v1))
+   ('root.V (id %v2))
+   ('init.trans-closure.connected (id %a) %v0 %v1)
+   ('root.E (id %b) %v1 %v2))))
+```
 
 -- messages

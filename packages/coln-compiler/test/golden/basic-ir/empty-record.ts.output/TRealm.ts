@@ -2,7 +2,7 @@ import type * as Runtime from "@coln-project/interface";
 
 export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
-    root: Runtime.MutableRef<{ unit: {} }>;
+    root: Runtime.Ref<{ unit: {} }>;
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = (new runtime.BaseTableRef(

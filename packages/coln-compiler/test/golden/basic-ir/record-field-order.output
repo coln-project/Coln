@@ -6,6 +6,7 @@ value: sig
   first : Int
   second : Int
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -13,22 +14,19 @@ value: sig
   E : Int -> Int -> Set
   R : (p : Pair) -> E p.second p.first -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.E := [a : Int, b : Int]
-    table root.R := [p.first : Int, p.second : Int, a : root.E]
-  end
-  definitions
-  end
-  rules
-    enforced root.E.foreignKey a b := root.E [a ↦ a, b ↦ b] ⊢ ⊤
-    enforced root.R.foreignKey p.first p.second a := root.R [
-      p.first ↦ p.first,
-      p.second ↦ p.second,
-      a ↦ a
-    ] ⊢ a ∈ root.E [a ↦ p.second, b ↦ p.first]
-  end
-end
+
+```flir
+('root.E (table (ground) ((%a int) (%b int))))
+('root.R (table (ground) ((%p.first int) (%p.second int) (%a 'root.E))))
+('root.E.foreignKey (law enforced ((%a int) (%b int)) (('root.E %a %b)) ()))
+('root.R.foreignKey
+ (law
+  enforced
+  ((%p.first int) (%p.second int) (%a 'root.E))
+  (('root.R %p.first %p.second %a))
+  (('root.E (id %a) %p.second %p.first))))
+```
 
 -- messages

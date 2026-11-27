@@ -199,14 +199,14 @@ type RealmId = Name
 
 type Path = Bwd Name
 
-newtype TableName = TableName {name :: Text}
+newtype GlobalSymbol = GlobalSymbol {name :: Text}
   deriving (Eq, Ord, Show)
 
-instance DPretty TableName where
+instance DPretty GlobalSymbol where
   dpretty tn = pretty tn.name
 
-tableName :: Path -> TableName
-tableName = TableName . renderText . concatWith (surround dot) . fmap dpretty . toList
+manglePath :: Path -> GlobalSymbol
+manglePath = GlobalSymbol . renderText . concatWith (surround dot) . fmap dpretty . toList
 
 -- Mode
 --------------------------------------------------------------------------------

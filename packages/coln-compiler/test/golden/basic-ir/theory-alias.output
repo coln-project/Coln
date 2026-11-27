@@ -5,20 +5,17 @@ type: Theory
 value: sig
   X : Set
 end
+
 global entry named Alias
 in mode: Conjunctive
 type: Theory
 value: Base
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+```
 
 -- messages

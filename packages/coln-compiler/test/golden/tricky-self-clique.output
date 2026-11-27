@@ -10,6 +10,7 @@ value: sig
   assign-to-field : (x : Ref) -> (f : Field) -> (y : Ref) -> Set
   assign-from-field : (x : Ref) -> (y : Ref) -> (f : Field) -> Set
 end
+
 global entry named Analysis
 in mode: Conjunctive
 type: (O : Ops) -> Theory
@@ -20,71 +21,79 @@ value: O => sig
   points-to-field/assign : (x : O.Ref) -> (f : O.Field) -> (y : O.Ref) -> (a : O.Addr) -> O.assign-to-field x f y -> points-to y a -> points-to-field x f a
   points-to/field-assign : (x : O.Ref) -> (y : O.Ref) -> (f : O.Field) -> (a : O.Addr) -> O.assign-from-field x y f -> points-to-field y f a -> points-to x a
 end
+
 realm named AnalysisRealm
-lowered: flatrealm
-  entities
-    table root.Addr := []
-    table root.Ref := []
-    table root.Field := []
-    table root.assign := [x : root.Ref, y : root.Ref]
-    table root.assign-to-field := [x : root.Ref, f : root.Field, y : root.Ref]
-    table root.assign-from-field := [x : root.Ref, y : root.Ref, f : root.Field]
-    view init.analysis.points-to := [a : root.Ref, b : root.Addr] primarykey [
-      a,
-      b
-    ]
-    view init.analysis.points-to-field := [
-      a : root.Ref,
-      b : root.Field,
-      c : root.Addr
-    ] primarykey [a, b, c]
-  end
-  definitions
-    chased init.analysis.points-to/assign x y a b := x ∈ root.Ref [] ∧ y ∈ root.Ref [] ∧ a ∈ root.Addr [] ∧ b ∈ root.assign [
-      x ↦ x,
-      y ↦ y
-    ] ∧ init.analysis.points-to [a ↦ y, b ↦ a] ⊢ init.analysis.points-to [
-      a ↦ x,
-      b ↦ a
-    ]
-    chased init.analysis.points-to-field/assign x f y a b := x ∈ root.Ref [] ∧ f ∈ root.Field [] ∧ y ∈ root.Ref [] ∧ a ∈ root.Addr [] ∧ b ∈ root.assign-to-field [
-      x ↦ x,
-      f ↦ f,
-      y ↦ y
-    ] ∧ init.analysis.points-to [a ↦ y, b ↦ a] ⊢ init.analysis.points-to-field [
-      a ↦ x,
-      b ↦ f,
-      c ↦ a
-    ]
-    chased init.analysis.points-to/field-assign x y f a b := x ∈ root.Ref [] ∧ y ∈ root.Ref [] ∧ f ∈ root.Field [] ∧ a ∈ root.Addr [] ∧ b ∈ root.assign-from-field [
-      x ↦ x,
-      y ↦ y,
-      f ↦ f
-    ] ∧ init.analysis.points-to-field [
-      a ↦ y,
-      b ↦ f,
-      c ↦ a
-    ] ⊢ init.analysis.points-to [a ↦ x, b ↦ a]
-  end
-  rules
-    enforced root.Addr.foreignKey := root.Addr [] ⊢ ⊤
-    enforced root.Ref.foreignKey := root.Ref [] ⊢ ⊤
-    enforced root.Field.foreignKey := root.Field [] ⊢ ⊤
-    enforced root.assign.foreignKey x y := root.assign [
-      x ↦ x,
-      y ↦ y
-    ] ⊢ x ∈ root.Ref [] ∧ y ∈ root.Ref []
-    enforced root.assign-to-field.foreignKey x f y := root.assign-to-field [
-      x ↦ x,
-      f ↦ f,
-      y ↦ y
-    ] ⊢ x ∈ root.Ref [] ∧ f ∈ root.Field [] ∧ y ∈ root.Ref []
-    enforced root.assign-from-field.foreignKey x y f := root.assign-from-field [
-      x ↦ x,
-      y ↦ y,
-      f ↦ f
-    ] ⊢ x ∈ root.Ref [] ∧ y ∈ root.Ref [] ∧ f ∈ root.Field []
-  end
-end
+
+```flir
+('root.Addr (table (ground) ()))
+('root.Ref (table (ground) ()))
+('root.Field (table (ground) ()))
+('root.assign (table (ground) ((%x 'root.Ref) (%y 'root.Ref))))
+('root.assign-to-field
+ (table (ground) ((%x 'root.Ref) (%f 'root.Field) (%y 'root.Ref))))
+('root.assign-from-field
+ (table (ground) ((%x 'root.Ref) (%y 'root.Ref) (%f 'root.Field))))
+('init.analysis.points-to (table view ((%a 'root.Ref) (%b 'root.Addr))))
+('init.analysis.points-to-field
+ (table view ((%a 'root.Ref) (%b 'root.Field) (%c 'root.Addr))))
+('init.analysis.points-to/assign
+ (rule
+  ((%x 'root.Ref) (%y 'root.Ref) (%a 'root.Addr) (%b 'root.assign))
+  (('root.Ref (id %x))
+   ('root.Ref (id %y))
+   ('root.Addr (id %a))
+   ('root.assign (id %b) %x %y)
+   ('init.analysis.points-to %y %a))
+  ('init.analysis.points-to %x %a)))
+('init.analysis.points-to-field/assign
+ (rule
+  ((%x 'root.Ref)
+   (%f 'root.Field)
+   (%y 'root.Ref)
+   (%a 'root.Addr)
+   (%b 'root.assign-to-field))
+  (('root.Ref (id %x))
+   ('root.Field (id %f))
+   ('root.Ref (id %y))
+   ('root.Addr (id %a))
+   ('root.assign-to-field (id %b) %x %f %y)
+   ('init.analysis.points-to %y %a))
+  ('init.analysis.points-to-field %x %f %a)))
+('init.analysis.points-to/field-assign
+ (rule
+  ((%x 'root.Ref)
+   (%y 'root.Ref)
+   (%f 'root.Field)
+   (%a 'root.Addr)
+   (%b 'root.assign-from-field))
+  (('root.Ref (id %x))
+   ('root.Ref (id %y))
+   ('root.Field (id %f))
+   ('root.Addr (id %a))
+   ('root.assign-from-field (id %b) %x %y %f)
+   ('init.analysis.points-to-field %y %f %a))
+  ('init.analysis.points-to %x %a)))
+('root.Addr.foreignKey (law enforced () (('root.Addr)) ()))
+('root.Ref.foreignKey (law enforced () (('root.Ref)) ()))
+('root.Field.foreignKey (law enforced () (('root.Field)) ()))
+('root.assign.foreignKey
+ (law
+  enforced
+  ((%x 'root.Ref) (%y 'root.Ref))
+  (('root.assign %x %y))
+  (('root.Ref (id %x)) ('root.Ref (id %y)))))
+('root.assign-to-field.foreignKey
+ (law
+  enforced
+  ((%x 'root.Ref) (%f 'root.Field) (%y 'root.Ref))
+  (('root.assign-to-field %x %f %y))
+  (('root.Ref (id %x)) ('root.Field (id %f)) ('root.Ref (id %y)))))
+('root.assign-from-field.foreignKey
+ (law
+  enforced
+  ((%x 'root.Ref) (%y 'root.Ref) (%f 'root.Field))
+  (('root.assign-from-field %x %y %f))
+  (('root.Ref (id %x)) ('root.Ref (id %y)) ('root.Field (id %f)))))
+```
 
 -- messages

@@ -5,7 +5,6 @@
 module Coln.CLI.GenerateIR where
 
 import Control.Monad (forM_)
-import Data.Aeson qualified as AE
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO qualified as TIO
 import System.FilePath ((</>))
@@ -21,7 +20,5 @@ generateIR opts = do
   let realms = lowerRealms globals
   forM_ (OMap.assocs realms) $ \(x, r) -> do
     let flir = generateIr r
-    let fnJson = opts.outputDir </> mangleToString x <> ".json"
-    AE.encodeFile fnJson flir
-    let fnPretty = opts.outputDir </> mangleToString x <> ".pretty"
+    let fnPretty = opts.outputDir </> mangleToString x <> ".flir"
     TIO.writeFile fnPretty (irPretty flir)

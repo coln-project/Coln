@@ -5,6 +5,7 @@ type: (X : Set) -> Set
 value: X => sig
   value : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -12,20 +13,19 @@ value: sig
   X : Set
   boxed : Box X -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.boxed := [a.value : root.X]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.boxed.foreignKey a.value := root.boxed [
-      a.value ↦ a.value
-    ] ⊢ a.value ∈ root.X []
-  end
-end
+
+```flir
+('root.X (table (ground) ()))
+('root.boxed (table (ground) ((%a.value 'root.X))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.boxed.foreignKey
+ (law
+  enforced
+  ((%a.value 'root.X))
+  (('root.boxed %a.value))
+  (('root.X (id %a.value)))))
+```
 
 -- messages

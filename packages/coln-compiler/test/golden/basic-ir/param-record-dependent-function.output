@@ -4,12 +4,14 @@ in mode: Conjunctive
 type: (X : Set) -> (x : X) -> Set
 value: X => x => sig
 end
+
 global entry named Box
 in mode: Conjunctive
 type: (X : Set) -> (x : X) -> (E : X -> Set) -> (f : (x : X) -> E x) -> (p : PointAt (E x) (f x)) -> Set
 value: X => x => E => f => p => sig
   image : E x
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -21,31 +23,35 @@ value: sig
   point : PointAt (E key) (f key)
   boxed : Box Key key E f point -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.Key := []
-    table root.key := [a : root.Key] primarykey []
-    table root.E := [a : root.Key]
-    table root.f := [x : root.Key, a : root.E] primarykey [x]
-    table root.boxed := [a.image : root.E]
-  end
-  definitions
-  end
-  rules
-    enforced root.Key.foreignKey := root.Key [] ⊢ ⊤
-    enforced root.key.foreignKey a := root.key [a ↦ a] ⊢ a ∈ root.Key []
-    monitored root.key.total := ⊤ ⊢ root.key []
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.Key []
-    enforced root.f.foreignKey x a := root.f [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.Key [] ∧ a ∈ root.E [a ↦ x]
-    monitored root.f.total x := x ∈ root.Key [] ⊢ root.f [x ↦ x]
-    enforced root.boxed.foreignKey a.image b := root.boxed [
-      a.image ↦ a.image
-    ] ⊢ root.key [a ↦ b] ∧ a.image ∈ root.E [a ↦ b]
-  end
-end
+
+```flir
+('root.Key (table (ground) ()))
+('root.key (table (ground (primarykey 0)) ((%a 'root.Key))))
+('root.E (table (ground) ((%a 'root.Key))))
+('root.f (table (ground (primarykey 1)) ((%x 'root.Key) (%a 'root.E))))
+('root.boxed (table (ground) ((%a.image 'root.E))))
+('root.Key.foreignKey (law enforced () (('root.Key)) ()))
+('root.key.foreignKey
+ (law enforced ((%a 'root.Key)) (('root.key %a)) (('root.Key (id %a)))))
+('root.key.total (law monitored () () (('root.key))))
+('root.E.foreignKey
+ (law enforced ((%a 'root.Key)) (('root.E %a)) (('root.Key (id %a)))))
+('root.f.foreignKey
+ (law
+  enforced
+  ((%x 'root.Key) (%a 'root.E))
+  (('root.f %x %a))
+  (('root.Key (id %x)) ('root.E (id %a) %x))))
+('root.f.total
+ (law monitored ((%x 'root.Key)) (('root.Key (id %x))) (('root.f %x))))
+('root.boxed.foreignKey
+ (law
+  enforced
+  ((%a.image 'root.E) (%b 'root.Key))
+  (('root.key %b) ('root.boxed %a.image))
+  (('root.E (id %a.image) %b))))
+```
 
 -- messages

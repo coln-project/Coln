@@ -4,12 +4,12 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       P: Runtime.MutableProp,
-      witness: Runtime.MutableRef<{ first: null, second: null, same: null }>
+      witness: Runtime.Ref<{ first: null, second: null, same: null }>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        P: (new runtime.BaseProp(mstore, "root.P", [])),
+        P: (new runtime.ViewProp(mstore, "root.P", [])),
         witness: (new runtime.BaseTableRef(
           mstore,
           "root.witness",

@@ -28,7 +28,7 @@ instance Readback (V.El N Set) (S.El N Set) where
       let go t BwdNil = t
           go t (xs :> x) = S.Proj (go t xs) x
       go (readb n ne.head) ne.spine
-    V.Cons fields -> S.Cons $ readb n <$> fields
+    V.Bundle fields -> S.Bundle $ readb n <$> fields
     V.Lit l -> S.Lit l
     V.Erased -> S.Erased
 
@@ -70,4 +70,4 @@ instance Readback (V.El N Theory) (S.El N Theory) where
     V.Code SSetU a -> S.Code SSetU (readb n a)
     V.PrimCode p u tn args -> S.PrimCode p u tn (readb n <$> args)
     V.Lam SSetTheory dom clo -> S.Lam (readb n dom) (readbClo n clo)
-    V.Cons fields -> S.Cons $ readb n <$> fields
+    V.Bundle fields -> S.Bundle $ readb n <$> fields

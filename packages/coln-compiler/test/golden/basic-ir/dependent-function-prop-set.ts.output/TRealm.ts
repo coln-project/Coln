@@ -5,14 +5,14 @@ export function createRealm(runtime: typeof Runtime) {
     root: {
       A: Runtime.MutableProp,
       B: (a: null) => Runtime.MutableSet<Runtime.RowId<"root.B">>,
-      f: (a: null) => Runtime.MutableRef<Runtime.RowId<"root.B">>
+      f: (a: null) => Runtime.Ref<Runtime.RowId<"root.B">>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.ViewProp(mstore, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseSet(mstore, "root.B", []));
+          return (new runtime.InductiveViewSet(mstore, "root.B", []));
         },
         f: (a: null) => {
           return (new runtime.BaseTableRef(

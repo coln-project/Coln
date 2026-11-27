@@ -6,57 +6,108 @@ module Coln.SIR.Realm where
 
 import Coln.Common
 import Coln.Core.Params
-
 import Coln.SIR.Syntax
 
+import Control.Monad.RWS.Strict
 import Data.Aeson qualified as AE
+import Data.Map.Ordered qualified as OMap
 import GHC.Generics
+
 
 data Materialization
   = Recomputed
-  | Memoized
   | Materialized
-
-data EntityVariant
-  = Table
-  | View Materialization
-
-data Entity = Entity
-  { entityVariant :: EntityVariant
-  , columns :: [(Name, Shape)]
-  , primaryKey :: Maybe [Int]
-  }
-
-data Definition = Definition
-  { inCtx :: [(Name, Query)]
-  , definand :: TableName
-  , args :: [El Set]
-  }
-
-data RuleVariant = Enforced | Monitored
   deriving (Show, Eq, Generic)
 
-data RuleContextSide = Antecedent | Consequent
+newtype LogicalPrimaryKey = LogicalPrimaryKey Int
+  deriving (Show, Eq, Generic)
+
+data TableVariant pkey
+  = Ground (Maybe pkey)
+  | Cons
+  | Union (Bwd GlobalSymbol)
+  | View Materialization
+  deriving (Show, Eq, Generic, Functor)
+
+data Table = Table
+  { tableVariant :: TableVariant LogicalPrimaryKey
+  , columns :: [(Name, Shape)]
+  }
 
 data Rule = Rule
-  { ruleVariant :: RuleVariant
-  , ctxSide :: RuleContextSide
-  , inCtx :: [(Name, Query)]
-  , antecedent :: Prop
-  , consequent :: Prop
+  { inCtx :: [(Name, Shape)]
+  , antecedent :: [Prop]
+  , consequent :: Atom
   }
 
+data LawVariant = Enforced | Monitored
+  deriving (Show, Eq, Generic)
+
+data LawContextSide = Antecedent | Consequent
+
+data Law = Law
+  { ruleVariant :: LawVariant
+  , inCtx :: [(Name, Shape)]
+  , antecedent :: [Prop]
+  , consequent :: [Prop]
+  }
+
+data Generators = Generators
+  { tables :: OMap GlobalSymbol Table
+  , rules :: OMap GlobalSymbol Rule
+  , laws :: OMap GlobalSymbol Law
+  }
+
+emptyGenerators :: Generators
+emptyGenerators = Generators OMap.empty OMap.empty OMap.empty
+
 data Realm = Realm
-  { entities :: OMap TableName Entity
-  , definitions :: OMap TableName Definition
-  , rules :: OMap TableName Rule
-  , root :: El Theory
-  , rootType :: TheoryShape
+  { generators :: Generators
   , auxillaries :: OMap Name (El Theory, TheoryShape)
   }
+
+-- GeneratorWriter
+--------------------------------------------------------------------------------
+
+newtype GeneratorWriter a = GeneratorWriter
+  { underlying :: RWS Path () Generators a }
+  deriving (Functor, Applicative, Monad, MonadReader Path, MonadState Generators)
+
+runGeneratorWriter :: GeneratorWriter a -> (a, Generators)
+runGeneratorWriter action = do
+  let (result, generators, _) = runRWS action.underlying BwdNil emptyGenerators
+  (result, generators)
+
+currentSymbol :: GeneratorWriter GlobalSymbol
+currentSymbol = manglePath <$> ask
+
+emitTable :: Table -> GeneratorWriter ()
+emitTable t = do
+  x <- currentSymbol
+  modify (\gs -> gs { tables = gs.tables OMap.>| (x, t) })
+
+emitRule :: Rule -> GeneratorWriter ()
+emitRule r = do
+  x <- currentSymbol
+  modify (\gs -> gs { rules = gs.rules OMap.>| (x, r) })
+
+emitLaw :: Law -> GeneratorWriter ()
+emitLaw l = do
+  x <- currentSymbol
+  modify (\gs -> gs { laws = gs.laws OMap.>| (x, l) })
+
+emitVariantOf :: GlobalSymbol -> GeneratorWriter ()
+emitVariantOf s = do
+  x <- currentSymbol
+  modify $ \gs -> do
+    let t = elemAt gs.tables s
+    let t' = case t.tableVariant of
+          Union variants -> t { tableVariant = Union (variants :> x) }
+          _ -> panic "attempted to add a case to a non-union table"
+    gs { tables = gs.tables OMap.>| (s, t') }
 
 -- JSON
 --------------------------------------------------------------------------------
 
-instance AE.ToJSON RuleVariant where
+instance AE.ToJSON LawVariant where
   toEncoding = AE.genericToEncoding aeOptions

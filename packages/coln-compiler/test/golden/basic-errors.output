@@ -6,10 +6,12 @@ value: sig
   first : Int
   second : Int
 end
+
 global entry named pair
 in mode: Conjunctive
 type: Pair
 value: [first := 1, second := 2]
+
 global entry named Dependent
 in mode: Conjunctive
 type: Theory
@@ -17,6 +19,7 @@ value: sig
   A : Set
   value : A
 end
+
 global entry named dependent
 in mode: Conjunctive
 type: Dependent

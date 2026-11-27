@@ -13,15 +13,18 @@ import Coln.SIR.Syntax qualified as S
 import Control.Monad (forM)
 import Control.Monad.State
 import Data.Set qualified as Set
-import Data.Vector.Strict qualified as Vec
+
 
 data Els
   = Scalar V.El
-  | Cons (Dict Els)
+  | Bundle (Dict Els)
   | Erased
 
+asVarName :: Path -> V.LocalName
+asVarName p = V.LocalName (manglePath p).name
+
 proj :: Els -> Name -> Els
-proj (Cons fields) x = elemAt fields x
+proj (Bundle fields) x = elemAt fields x
 proj Erased _ = Erased
 proj (Scalar _) _ = panic "tried to project from non-extern scalar"
 
@@ -30,7 +33,7 @@ concatEls vs = toList $ go vs BwdNil
  where
   go [] vs' = vs'
   go (Scalar v : rest) vs' = go rest (vs' :> v)
-  go (Cons d : rest) vs' = go rest (go (toList d.values) vs')
+  go (Bundle d : rest) vs' = go rest (go (toList d.values) vs')
   go (Erased : rest) vs' = go rest vs'
 
 newtype Props = Props {apply :: Bwd V.Prop -> Bwd V.Prop}
@@ -48,7 +51,7 @@ single :: V.Prop -> Props
 single p = Props (:> p)
 
 data AuxilaryVars = AuxilaryVars
-  { vars :: Bwd (V.ColName, V.ColType)
+  { vars :: Bwd (V.LocalName, V.ValType)
   , numVars :: Int
   , props :: Props
   , usedRoots :: Set.Set Name
@@ -57,7 +60,7 @@ data AuxilaryVars = AuxilaryVars
 newtype FlatM a = FlatM {unFlatM :: State AuxilaryVars a}
   deriving (Functor, Applicative, Monad, MonadState AuxilaryVars)
 
-runFlatM :: FlatM a -> (a, [(V.ColName, V.ColType)], Props)
+runFlatM :: FlatM a -> (a, [(V.LocalName, V.ValType)], Props)
 runFlatM action = do
   let (x, aux) = runState action.unFlatM (AuxilaryVars BwdNil 0 mempty Set.empty)
   (x, toList aux.vars, aux.props)
@@ -67,11 +70,11 @@ freshAt p = \case
   S.Scalar t -> do
     aux <- get
     let i = aux.numVars
-    put $ aux{vars = (aux.vars :> (tableName p, t)), numVars = (i + 1)}
+    put $ aux{vars = (aux.vars :> (asVarName p, t)), numVars = (i + 1)}
     pure $ Scalar $ V.LocalVar $ FId i
   S.Tuple fields -> do
     fields' <- forM (toList fields) $ \(x, sh) -> freshAt (p :> x) sh
-    pure $ Cons $ withHead fields fields'
+    pure $ Bundle $ withHead fields fields'
   S.Unstored -> pure Erased
 
 fresh :: Maybe Name -> S.Shape -> FlatM Els
@@ -114,71 +117,82 @@ instance Flatten (S.El Set) Els where
     S.Lookup tn args shape -> do
       v <- fresh Nothing shape
       args' <- traverse (flatten l) args
-      assert $ single $ V.PAtom $ V.Atom tn Nothing (zip [0 ..] $ concatEls (args' ++ [v]))
+      assert $ single $ V.PAtom $ V.Atom tn Nothing (concatEls (args' ++ [v]))
       pure v
     S.Proj t x -> do
       v <- flatten l t
       pure $ proj v x
-    S.Cons fields -> do
+    S.Bundle fields -> do
       fields' <- forM (toList fields) $ \(_, t) -> flatten l t
-      pure $ Cons $ withHead fields fields'
+      pure $ Bundle $ withHead fields fields'
     S.Lit l -> pure $ Scalar $ V.Lit l
     S.Erased -> pure Erased
 
 equate :: S.Shape -> Els -> Els -> Props
-equate (S.Scalar _) v0 v1 = single $ V.PEq (getScalar v0) (getScalar v1)
+equate (S.Scalar ty) v0 v1 = single $ V.PEq ty (getScalar v0) (getScalar v1)
 equate (S.Tuple fs) v0 v1 =
   mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
 equate S.Unstored _ _ = mempty
 
+instance Flatten S.Atom V.Atom where
+  flatten l (S.Atom tn t args) = do
+    mv <- asAtomHead <$> flatten l t
+    argvs <- traverse (flatten l) args
+    pure (V.Atom tn mv (concatEls argvs))
+
 instance Flatten S.Prop Props where
   flatten l = \case
-    S.Atom tn t args -> do
-      mv <- asAtomHead <$> flatten l t
-      argvs <- traverse (flatten l) args
-      pure $ single $ V.PAtom (V.Atom tn mv (zip [0 ..] $ concatEls argvs))
-    S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
-    S.Eq sh t0 t1 -> do
+    S.PAtom a -> single . V.PAtom <$> flatten l a
+    S.PAnd ps -> mconcat <$> traverse (flatten l) (toList ps.values)
+    S.PEq sh t0 t1 -> do
       v0 <- flatten l t0
       v1 <- flatten l t1
       pure $ equate sh v0 v1
 
-flattenColumn :: Path -> S.Shape -> [(V.ColName, V.ColType)]
+instance Flatten [S.Prop] Props where
+  flatten l ps = mconcat <$> mapM (flatten l) ps
+
+flattenColumn :: Path -> S.Shape -> [(V.LocalName, V.ValType)]
 flattenColumn p = \case
-  S.Scalar t -> [(tableName p, t)]
+  S.Scalar t -> [(asVarName p, t)]
   S.Tuple d -> concat [flattenColumn (p :> x) t | (x, t) <- toList d]
   S.Unstored -> []
 
-flattenColumns :: [(Name, S.Shape)] -> [(V.ColName, V.ColType)]
+flattenColumns :: [(Name, S.Shape)] -> [(V.LocalName, V.ValType)]
 flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)
 
-flattenPrimaryKey :: [S.Shape] -> [Int] -> [Int]
-flattenPrimaryKey shapes cols = do
-  let go n [] = [n]
-      go n (sh : rest) = do
-        let s = S.shapeSize sh
-        n : go (n + s) rest
-  let offsets = Vec.fromList $ go 0 shapes
-  concat [[(offsets Vec.! i) .. (offsets Vec.! (i + 1)) - 1] | i <- cols]
+flattenPrimaryKey :: [S.Shape] -> S.LogicalPrimaryKey -> V.PhysicalPrimaryKey
+flattenPrimaryKey shapes (S.LogicalPrimaryKey n) =
+  V.PhysicalPrimaryKey $ sum [S.shapeSize sh | sh <- take n shapes]
 
-flattenEntity :: S.Entity -> V.Entity
-flattenEntity e =
-  V.Entity
-    { V.entityVariant = case e.entityVariant of
-        S.Table -> V.Table
-        S.View S.Memoized -> V.View V.Memoized
-        S.View S.Materialized -> V.View V.Materialized
-        S.View S.Recomputed -> V.View V.Recomputed
-    , V.columns = flattenColumns e.columns
-    , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
+flattenTable :: S.Table -> V.Table
+flattenTable t =
+  V.Table
+    { V.tableVariant =
+      fmap (flattenPrimaryKey (snd <$> t.columns)) t.tableVariant
+    , V.columns = V.Context $ flattenColumns t.columns
     }
 
-bindTele :: Locals -> [(Name, S.Query)] -> FlatM Locals
+bindTele :: Locals -> [(Name, S.Shape)] -> FlatM Locals
 bindTele l [] = pure l
 bindTele l ((x, a) : rest) = do
-  v <- fresh (Just x) a.shape
-  app l a.pred v >>= assert
+  v <- fresh (Just x) a
   bindTele (l :> v) rest
+
+flattenLaw :: S.Law -> V.Law
+flattenLaw r = do
+  let ((ante, cons), vars, ps) = runFlatM $ do
+        vs <- bindTele BwdNil r.inCtx
+        ante <- flatten vs r.antecedent
+        cons <- flatten vs r.consequent
+        pure (ante, cons)
+  let (ruleAnte, ruleCons) = (ps <> ante, cons)
+  V.Law
+    { V.lawVariant = r.ruleVariant
+    , V.context = V.Context vars
+    , V.antecedents = toList ruleAnte
+    , V.consequents = toList ruleCons
+    }
 
 flattenRule :: S.Rule -> V.Rule
 flattenRule r = do
@@ -187,24 +201,8 @@ flattenRule r = do
         ante <- flatten vs r.antecedent
         cons <- flatten vs r.consequent
         pure (ante, cons)
-  let (ruleAnte, ruleCons) = case r.ctxSide of
-        S.Antecedent -> (ps <> ante, cons)
-        S.Consequent -> (ante, ps <> cons)
   V.Rule
-    { V.ruleVariant = r.ruleVariant
-    , V.vars = vars
-    , V.antecedents = toList ruleAnte
-    , V.consequents = toList ruleCons
-    }
-
-flattenDefinition :: S.Definition -> V.Definition
-flattenDefinition d = do
-  let (args, vars, ps) = runFlatM $ do
-        vs <- bindTele BwdNil d.inCtx
-        concatEls <$> traverse (flatten vs) d.args
-  V.Definition
-    { V.vars = vars
-    , V.antecedents = toList ps
-    , V.definand = d.definand
-    , V.args = args
+    { V.context = V.Context vars
+    , V.antecedents = toList (ps <> ante)
+    , V.consequent = cons
     }

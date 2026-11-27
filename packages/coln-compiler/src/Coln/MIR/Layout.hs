@@ -58,10 +58,10 @@ layout :: Path -> Providence -> Scope -> V.Ty N Theory -> (Trie Generator, M.El 
 layout p pr sc = \case
   V.LiftTy LSetTheory a -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenLift a))
-    (gt, M.liftEl $ M.lookup (tableName p) (args sc) (M.fromV sc.len a))
+    (gt, M.liftEl $ M.lookup (manglePath p) (args sc) (M.fromV sc.len a))
   V.U (inferSetCodes -> u) -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenU u))
-    (gt, M.primCode pr u (tableName p) (args sc))
+    (gt, M.primCode pr u (manglePath p) (args sc))
   V.Function ft -> case ft.variant.mlevel of
     SSetTheory -> do
       let x = argName sc.usedNames ft.cod
@@ -76,14 +76,14 @@ layout p pr sc = \case
           (gt : gts, m : ms)
     let (gts, ms) = go rt.capture (toList rt.fieldTypes)
     let gt = Node $ Dict rt.fieldTypes.head (Vector.fromList gts)
-    (gt, M.cons (Dict rt.fieldTypes.head (Vector.fromList ms)))
+    (gt, M.bundle (Dict rt.fieldTypes.head (Vector.fromList ms)))
 
 layoutTop :: V.Ty N Theory -> (Trie Generator, M.El N Theory)
 layoutTop = layout (BwdNil :> "root") Profane emptyScope
 
 asNominative :: V.El D Set -> V.El N Set
 asNominative = \case
-  V.Cons fields -> V.Cons $ flip fmap fields $ \case
+  V.Bundle fields -> V.Bundle $ flip fmap fields $ \case
     V.Become v -> v
     V.Describe v -> asNominative v
 
@@ -103,8 +103,8 @@ declare p sc = \case
     let (v, sc') = bind sc x dom
     let (gt, m) = declareEvaluation p sc' (V.appClo clo v)
     (gt, M.lam sc.locals (M.fromV sc.len dom) (S.Abs x m.stx))
-  V.Cons fields -> do
+  V.Bundle fields -> do
     let (gts, ms) = unzip $ flip map (toList fields) $ \(x, v) ->
           declareEvaluation (p :> x) sc v
-    (Node $ withHead fields gts, M.cons $ withHead fields ms)
+    (Node $ withHead fields gts, M.bundle $ withHead fields ms)
   V.Init a -> layout p Holy sc a
